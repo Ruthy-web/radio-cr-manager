@@ -17,7 +17,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         ->middleware('throttle:login')
         ->name('auth.two-factor.verify');
 
-    Route::middleware(['auth:sanctum', 'token.active'])->group(function () {
+    Route::middleware(['auth:sanctum', 'token.active', 'throttle:api'])->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::get('/heartbeat', HeartbeatController::class)->name('heartbeat');
         Route::get('/catalog', CatalogController::class)->name('catalog');

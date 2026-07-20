@@ -6,8 +6,9 @@ Yaoundé (Cameroun). Ce dépôt construit également, dans un second temps, la
 refonte professionnelle de la PWA existante (dictée vocale, mode hors ligne,
 moteur d'insertion sémantique).
 
-> Documentation d'installation complète : à venir en fin de projet (étape 11
-> du plan de construction). Ce README est mis à jour à chaque étape.
+> Les 11 étapes du plan de construction sont terminées. Ce README documente
+> l'installation locale, le déploiement en production, l'architecture et la
+> conformité aux règles du cahier des charges.
 
 ## État d'avancement
 
@@ -31,7 +32,9 @@ moteur d'insertion sémantique).
 - [x] Étape 9 — Refonte professionnelle de la PWA (cœur métier : auth réelle,
       catalogue hors ligne, dictée + moteur sémantique, IA, synchronisation)
 - [x] Étape 10 — Sauvegardes planifiées, tableau de bord, journal d'audit
-- [ ] Étape 11 — Durcissement final, README complet, revue de sécurité
+- [x] Étape 11 — Durcissement final (gestion des utilisateurs, limitation de
+      débit générale de l'API, cohérence des rôles sur la synchronisation),
+      README complet, revue de sécurité
 
 ## Démarrage rapide (développement local)
 
@@ -142,15 +145,31 @@ DOCX/PDF · Pest pour les tests.
 - En-têtes de sécurité systématiques : CSP, `X-Frame-Options: DENY`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy`
   (`App\Http\Middleware\SecurityHeaders`).
+- Mots de passe : 10 caractères minimum, majuscule/minuscule/chiffre/symbole,
+  vérifiés contre les fuites connues (`Password::uncompromised()`,
+  `AppServiceProvider`).
 - Verrouillage de compte 15 minutes après 5 échecs de connexion.
 - Authentification à deux facteurs par e-mail, activable par utilisateur.
 - Déconnexion automatique de la PWA après 15 minutes d'inactivité
-  (`/api/v1/heartbeat`).
-- Journalisation des connexions et actions sensibles (`audit_logs`).
-- CSP : `script-src 'self' 'unsafe-eval'` — `unsafe-eval` est nécessaire au
-  fonctionnement d'Alpine.js (évaluation de `x-data`/`x-on`), mais aucun
-  script inline n'est autorisé (`unsafe-inline` volontairement absent) ; tout
-  le JS est servi en fichiers externes versionnés via Vite.
+  (`/api/v1/heartbeat`), révocation du jeton à la déconnexion et à la
+  désactivation d'un compte (`/admin/utilisateurs`).
+- Limitation de débit : connexion (10/min/e-mail+IP), API générale
+  authentifiée (120/min/utilisateur, `throttle:api`), proxys IA
+  (20/min/utilisateur, `throttle:ai`, en plus du contrôle d'accès).
+- Rôles appliqués identiquement sur tous les canaux : l'interface admin
+  (`ReportRequest::canEditMedicalContent()`) et l'API de synchronisation
+  (`ReportSyncService`) empêchent toutes deux une secrétaire de rédiger le
+  contenu médical ou de finaliser/signer un compte rendu (F1).
+- Journalisation des connexions et actions sensibles (`audit_logs`),
+  consultable en lecture seule par un administrateur (`/admin/audit`).
+- CSP : `script-src 'self' 'unsafe-eval'` sur l'admin — `unsafe-eval` est
+  nécessaire au fonctionnement d'Alpine.js (évaluation de `x-data`/`x-on`),
+  mais aucun script inline n'est autorisé (`unsafe-inline` volontairement
+  absent) ; tout le JS est servi en fichiers externes versionnés via Vite. La
+  PWA (`/app/`) a une CSP plus stricte encore : ni `unsafe-eval` ni
+  `unsafe-inline`, JS natif sans framework.
+- Aucune donnée cross-origin : la PWA et l'admin sont servies par la même
+  origine que l'API, aucune configuration CORS permissive n'est nécessaire.
 
 ## Comptes rendus (F3)
 
@@ -264,7 +283,11 @@ rattrapage au retour du réseau, jamais un point de passage obligé.
   créés/modifiés/archivés depuis `since` (pagination par curseur implicite
   via `has_more` + `updated_at` du dernier élément), y compris les comptes
   rendus archivés entre-temps (`deleted: true`) pour que la PWA purge son
-  stockage local.
+  stockage local. Rôle appliqué identiquement à `/admin/comptes-rendus`
+  (F1) : une secrétaire ne peut pas rédiger le contenu médical ni
+  finaliser/signer via la synchronisation — le contenu envoyé est ignoré et
+  repris tel quel depuis le template de l'examen, le statut ne peut pas
+  dépasser « brouillon ».
 - `GET /api/v1/catalog` — hôpitaux actifs et leurs examens actifs, pour mise
   en cache locale (IndexedDB) et création de compte rendu hors ligne.
 
@@ -304,12 +327,6 @@ d'administration, pas de la PWA.
   réponses `/api/*`, qui portent des données patient et vivent dans
   IndexedDB) pour un chargement hors ligne instantané.
 
-**Limite connue** — l'API de synchronisation (F6) accepte le contenu envoyé
-par tout utilisateur authentifié sans distinguer les rôles (contrairement à
-`/admin/comptes-rendus` où la secrétaire ne peut pas rédiger le contenu
-médical, F1) : à traiter si la PWA est mise entre les mains d'un profil
-secrétaire.
-
 ## Sauvegardes (F7)
 
 `App\Services\BackupService` (`php artisan app:backup`, planifié
@@ -332,3 +349,78 @@ dans l'archive. Voir `tests/Feature/BackupServiceTest.php`.
   seule de `audit_logs` (connexions, créations/modifications d'hôpitaux,
   d'examens, de comptes rendus, clés API, imports…), filtrable par action,
   utilisateur et plage de dates, paginé.
+- **Utilisateurs** (`/admin/utilisateurs`, rôle `admin`) — création et
+  modification des comptes (nom, e-mail, rôle, 2FA, mot de passe — laisser le
+  champ vide en modification conserve le mot de passe actuel), désactivation
+  par soft delete avec révocation immédiate des jetons API (jamais de
+  suppression physique, jamais de désactivation de son propre compte).
+
+## Conformité aux règles absolues du cahier des charges
+
+- **R1** (le DOCX généré modifie le template institutionnel existant, jamais
+  de reconstruction ; Arial Narrow ; titres/sous-titres jamais soulignés ;
+  en-tête/logo/couleurs de l'hôpital préservés à l'identique) —
+  `App\Services\DocxReportGenerator`, étape 5. Vérifié par
+  `tests/Feature/DocxReportGenerationTest.php`.
+- **R2** (ne jamais inventer une donnée patient absente) — les prompts IA
+  (`App\Services\Ai\ReportDraftService`, `DictationRefinerService`)
+  l'imposent explicitement ; les champs identité laissés vides côté
+  formulaire (admin comme PWA) restent vides, jamais complétés
+  automatiquement.
+- **R3** (données patient chiffrées au repos, HTTPS, aucune PHI dans les
+  journaux) — `patient_name`/`file_number` en cast `encrypted`
+  (`App\Models\Report`) ; `ForceHttps` ; `AuditLogger` et `AiUsageLogger` ne
+  journalisent que des métadonnées techniques (action, durée, statut),
+  jamais de contenu médical — vérifié explicitement par
+  `tests/Feature/Api/Ai/*`.
+- **R4** (clés API IA uniquement côté serveur) — clés Groq/Anthropic saisies
+  via l'écran admin, chiffrées en base (`api_credentials`), jamais exposées
+  au client ; la PWA n'appelle que les proxys `/api/v1/{stt,ai/refine,ai/draft}`
+  du backend (étape 6).
+- **R5** (PWA offline-first préservée, le backend n'est qu'une couche de
+  synchronisation) — `public/app/` fonctionne sans réseau (IndexedDB,
+  service worker limité à la coquille applicative) ; la synchronisation
+  (`/api/v1/reports/sync`) est un rattrapage, jamais un prérequis (étape 9).
+- **R6** (tous les textes visibles par l'utilisateur en français) — admin et
+  PWA intégralement en français ; seuls les identifiants techniques (noms de
+  colonnes, routes, code) sont en anglais, comme il est d'usage.
+
+## Déploiement en production
+
+1. **Serveur** : PHP 8.3+ avec extensions `pdo_mysql` (ou `pdo_sqlite`),
+   `gd`, `zip`, `mbstring`, `intl` ; MySQL 8 ; `libreoffice-writer` installé
+   (`soffice` dans le `PATH`, ou `LIBREOFFICE_BINARY`) ; `mysqldump`
+   disponible si les sauvegardes (F7) sont activées sur MySQL.
+2. **Configuration** : copier `.env.example` en `.env`, renseigner
+   `APP_URL` (HTTPS), `DB_*`, `MAIL_*` (obligatoire pour la 2FA et les
+   notifications), `GROQ_API_KEY`/`ANTHROPIC_API_KEY` (ou les configurer
+   ensuite via l'écran admin « Clés API »), `SESSION_SECURE_COOKIE=true`.
+   Générer la clé applicative : `php artisan key:generate`. **Ne jamais**
+   committer `.env` ni la clé applicative.
+3. **Installation** :
+   ```bash
+   composer install --no-dev --optimize-autoloader
+   npm install && npm run build
+   php artisan migrate --force
+   php artisan db:seed --class=HospitalCatalogSeeder --force
+   php artisan storage:link
+   ```
+   Créer ensuite le premier compte administrateur (`php artisan tinker`, ou
+   temporairement via `UserSeeder` adapté) puis gérer les comptes suivants
+   depuis `/admin/utilisateurs`.
+4. **Worker de file d'attente** : superviser `php artisan queue:work` (ex.
+   Supervisor/systemd) — utilisé par les jobs en arrière-plan
+   (`GenerateReportDocumentJob` reste toutefois synchrone par défaut, voir
+   F3 complet). Sans worker actif, seules les fonctionnalités synchrones
+   restent disponibles.
+5. **Planificateur** : une entrée cron unique appelle le planificateur
+   Laravel, qui déclenche la sauvegarde quotidienne (F7) et toute tâche
+   planifiée future :
+   ```
+   * * * * * cd /chemin/vers/le/projet && php artisan schedule:run >> /dev/null 2>&1
+   ```
+6. **Permissions fichiers** : `storage/` et `bootstrap/cache/` inscriptibles
+   par l'utilisateur du serveur web ; `storage/app/templates/` doit rester
+   accessible en lecture (contient les DOCX institutionnels).
+7. **PWA** : accessible à `https://votre-domaine/app/` — à installer sur les
+   téléphones/tablettes de terrain (« Ajouter à l'écran d'accueil »).

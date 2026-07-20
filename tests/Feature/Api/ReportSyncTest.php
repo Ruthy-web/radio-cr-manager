@@ -90,6 +90,31 @@ it('refuse de réanimer silencieusement un compte rendu archivé', function () {
     expect(Report::withTrashed()->find($report->id)->trashed())->toBeTrue();
 });
 
+it('reprend le contenu du template et ignore le statut envoyé quand une secrétaire synchronise', function () {
+    $secretaire = User::factory()->secretaire()->create();
+    $this->exam->update([
+        'heading' => 'Compte Rendu Template',
+        'technique' => 'Technique du template',
+        'results' => [['text' => 'Résultat template', 'abnormal' => false, 'heading' => false]],
+        'conclusion' => 'Conclusion du template',
+    ]);
+
+    $response = $this->withHeaders(bearer($secretaire))->postJson(route('api.v1.reports.sync.push'), [
+        'reports' => [syncPayload((string) Str::uuid(), $this->hospital, [
+            'exam_template_id' => $this->exam->id,
+            'content' => ['heading' => 'Contenu invente', 'technique' => 'Tentative de rédaction', 'results' => [], 'conclusion' => 'Faux normal'],
+            'status' => 'signe',
+        ])],
+    ]);
+
+    $response->assertOk()->assertJsonPath('results.0.outcome', 'created');
+
+    $report = Report::where('exam_template_id', $this->exam->id)->firstOrFail();
+    expect($report->content['technique'])->toBe('Technique du template')
+        ->and($report->content['conclusion'])->toBe('Conclusion du template')
+        ->and($report->status->value)->toBe('brouillon');
+});
+
 it('rejette un envoi sans hôpital ni contenu', function () {
     $this->withHeaders(bearer($this->user))->postJson(route('api.v1.reports.sync.push'), [
         'reports' => [['client_uuid' => (string) Str::uuid()]],

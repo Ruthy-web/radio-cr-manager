@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\UserRole;
+use App\Models\ExamTemplate;
 use App\Models\Report;
 use App\Models\User;
 use Carbon\CarbonImmutable;
@@ -57,6 +59,12 @@ class ReportSyncService
             return $this->outcome($existing, 'unchanged');
         }
 
+        // La secrétaire ne rédige jamais le contenu médical ni ne
+        // finalise/signe un compte rendu (F1), quel que soit le canal : la
+        // règle déjà appliquée par ReportController/ReportRequest s'applique
+        // identiquement à un envoi de synchronisation.
+        $canEditMedicalContent = $user->hasRole(UserRole::Admin, UserRole::Radiologue);
+
         $attributes = [
             'hospital_id' => $payload['hospital_id'],
             'exam_template_id' => $payload['exam_template_id'] ?? null,
@@ -66,8 +74,12 @@ class ReportSyncService
             'file_number' => $payload['file_number'] ?? null,
             'prescriber' => $payload['prescriber'] ?? null,
             'exam_date' => $payload['exam_date'] ?? null,
-            'content' => $payload['content'],
-            'status' => $payload['status'] ?? 'brouillon',
+            'content' => $canEditMedicalContent
+                ? $payload['content']
+                : $this->contentFromTemplate($payload),
+            'status' => $canEditMedicalContent
+                ? ($payload['status'] ?? 'brouillon')
+                : ($existing?->status?->value ?? 'brouillon'),
         ];
 
         if ($existing) {
@@ -85,6 +97,29 @@ class ReportSyncService
         $this->audit->log('compte_rendu_synchronise_cree', $user, $report);
 
         return $this->outcome($report, 'created');
+    }
+
+    /**
+     * Reprend le contenu tel quel depuis l'examen du catalogue (F1) : une
+     * secrétaire choisit l'examen mais ne rédige jamais le contenu médical.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function contentFromTemplate(array $payload): array
+    {
+        $exam = isset($payload['exam_template_id'])
+            ? ExamTemplate::find($payload['exam_template_id'])
+            : null;
+
+        return [
+            'heading' => $exam?->heading,
+            'identity' => ['side' => $payload['content']['identity']['side'] ?? null],
+            'indication' => $exam?->indication,
+            'technique' => $exam?->technique,
+            'results' => $exam?->results ?? [],
+            'conclusion' => $exam?->conclusion,
+        ];
     }
 
     private function outcome(Report $report, string $outcome): array

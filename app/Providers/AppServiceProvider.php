@@ -43,5 +43,11 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('ai', function ($request) {
             return Limit::perMinute(20)->by($request->user()?->id ?? $request->ip());
         });
+
+        // Limitation générale de l'API (F9), en défense en profondeur au-delà
+        // du contrôle d'accès (heartbeat, catalogue, synchronisation).
+        RateLimiter::for('api', function ($request) {
+            return Limit::perMinute(120)->by($request->user()?->id ?? $request->ip());
+        });
     }
 }

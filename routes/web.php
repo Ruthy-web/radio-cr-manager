@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\ExamTemplateController;
 use App\Http\Controllers\Admin\HospitalController;
 use App\Http\Controllers\Admin\HospitalImportController;
 use App\Http\Controllers\Admin\ReportController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
 
@@ -35,6 +36,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
         Route::middleware('role:admin')->group(function () {
             Route::get('/audit', [AuditLogController::class, 'index'])->name('audit.index');
+
+            Route::post('/utilisateurs/{user}/reactiver', [UserController::class, 'restore'])->name('users.restore');
+            Route::resource('utilisateurs', UserController::class)
+                ->parameters(['utilisateurs' => 'user'])
+                ->names('users')
+                ->except(['show']);
 
             Route::prefix('hopitaux/importer')->name('hospitals.import.')->group(function () {
                 Route::get('/', [HospitalImportController::class, 'create'])->name('create');

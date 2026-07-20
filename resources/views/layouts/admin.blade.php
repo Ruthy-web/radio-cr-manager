@@ -10,6 +10,8 @@
                 <a href="{{ route('admin.reports.index') }}" class="hover:text-slate-900">Comptes rendus</a>
                 @if (auth()->user()->hasRole(\App\Enums\UserRole::Admin))
                     <a href="{{ route('admin.hospitals.index') }}" class="hover:text-slate-900">Hôpitaux</a>
+                    <a href="{{ route('admin.users.index') }}" class="hover:text-slate-900">Utilisateurs</a>
+                    <a href="{{ route('admin.audit.index') }}" class="hover:text-slate-900">Audit</a>
                     <a href="{{ route('admin.settings.api-credentials.edit') }}" class="hover:text-slate-900">Clés API</a>
                 @endif
                 <form method="POST" action="{{ route('admin.logout') }}">
