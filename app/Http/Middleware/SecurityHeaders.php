@@ -21,9 +21,14 @@ class SecurityHeaders
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+        // Note : 'unsafe-eval' est nécessaire au fonctionnement d'Alpine.js
+        // (évaluation des expressions x-data/x-on), qui est le choix de
+        // stack imposé pour l'admin. Aucun script inline n'est autorisé
+        // ('unsafe-inline' volontairement absent de script-src) : tout le JS
+        // est servi en fichiers externes versionnés depuis 'self'.
         $response->headers->set(
             'Content-Security-Policy',
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'"
+            "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-eval'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'"
         );
 
         if ($request->isSecure()) {

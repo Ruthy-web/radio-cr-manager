@@ -8,14 +8,16 @@
     Connecté en tant que {{ auth()->user()->name }} ({{ auth()->user()->role->label() }})
 </p>
 
-@if (auth()->user()->hasRole(\App\Enums\UserRole::Admin))
-    <a href="{{ route('admin.hospitals.index') }}"
+<div class="flex flex-wrap gap-3">
+    <a href="{{ route('admin.reports.index') }}"
        class="inline-flex items-center rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
-        Gérer les hôpitaux et catalogues d'examens
+        Comptes rendus
     </a>
-@else
-    <div class="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
-        Les comptes rendus (F3) seront construits à l'étape suivante.
-    </div>
-@endif
+    @if (auth()->user()->hasRole(\App\Enums\UserRole::Admin))
+        <a href="{{ route('admin.hospitals.index') }}"
+           class="inline-flex items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100">
+            Hôpitaux et catalogues d'examens
+        </a>
+    @endif
+</div>
 @endsection

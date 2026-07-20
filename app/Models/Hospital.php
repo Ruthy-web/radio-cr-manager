@@ -33,6 +33,11 @@ class Hospital extends Model
         return $this->hasMany(ExamTemplate::class);
     }
 
+    public function reports(): HasMany
+    {
+        return $this->hasMany(Report::class);
+    }
+
     /**
      * Couleur principale utilisée pour les titres de section du compte rendu (F3).
      */

@@ -16,7 +16,8 @@ moteur d'insertion sémantique).
       verrouillage de compte, en-têtes de sécurité, HTTPS forcé.
 - [x] Étape 2 — Référentiel hôpitaux & catalogue d'examens (185 examens réels
       extraits automatiquement des 5 DOCX institutionnels, CRUD admin complet)
-- [ ] Étape 3 — CRUD comptes rendus + versions + historique
+- [x] Étape 3 — CRUD comptes rendus + versions + historique groupé par
+      journée, recherche (nom/hôpital/date), statuts brouillon/finalisé/signé
 - [ ] Étape 4 — Moteur d'insertion sémantique
 - [ ] Étape 5 — Génération DOCX/PDF depuis les templates réels
 - [ ] Étape 6 — Proxys IA (transcription + rédaction)
@@ -94,3 +95,23 @@ pour les tests.
 - Déconnexion automatique de la PWA après 15 minutes d'inactivité
   (`/api/v1/heartbeat`).
 - Journalisation des connexions et actions sensibles (`audit_logs`).
+- CSP : `script-src 'self' 'unsafe-eval'` — `unsafe-eval` est nécessaire au
+  fonctionnement d'Alpine.js (évaluation de `x-data`/`x-on`), mais aucun
+  script inline n'est autorisé (`unsafe-inline` volontairement absent) ; tout
+  le JS est servi en fichiers externes versionnés via Vite.
+
+## Comptes rendus (F3)
+
+CRUD complet sous `/admin/comptes-rendus`, accessible aux trois rôles avec
+des droits différenciés :
+- **Radiologue / admin** : rédigent le contenu médical (technique, résultats,
+  conclusion) et peuvent finaliser puis signer un compte rendu.
+- **Secrétaire** : saisit l'identité patient et choisit l'examen ; le contenu
+  médical est repris tel quel du template (elle ne peut pas le rédiger ni
+  valider — F1).
+
+Chaque sauvegarde du contenu médical crée automatiquement une entrée dans
+`report_versions` (restauration possible). L'historique (`/admin/comptes-rendus`)
+est groupé par journée avec recherche par nom de patient (déchiffré en
+mémoire, R3), hôpital et plage de dates. Aucune suppression physique : un
+compte rendu archivé reste consultable en base (soft delete).

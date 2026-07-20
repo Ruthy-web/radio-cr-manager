@@ -7,6 +7,7 @@
             <a href="{{ route('admin.dashboard') }}" class="font-semibold text-slate-900">Radio CR Manager</a>
             <nav class="flex items-center gap-4 text-sm text-slate-600">
                 <a href="{{ route('admin.dashboard') }}" class="hover:text-slate-900">Tableau de bord</a>
+                <a href="{{ route('admin.reports.index') }}" class="hover:text-slate-900">Comptes rendus</a>
                 @if (auth()->user()->hasRole(\App\Enums\UserRole::Admin))
                     <a href="{{ route('admin.hospitals.index') }}" class="hover:text-slate-900">Hôpitaux</a>
                 @endif
