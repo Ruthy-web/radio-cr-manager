@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#1F3864" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'" />
+  <meta name="theme-color" content="#0d5c56" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://cdn.jsdelivr.net https://huggingface.co https://*.huggingface.co https://*.hf.co; worker-src 'self' blob:; base-uri 'self'" />
   <title>Radio CR Manager</title>
   <link rel="manifest" href="/app/manifest.webmanifest" />
   <link rel="icon" href="/app/icons/icon-192.png" />
@@ -13,7 +13,7 @@
 <body>
   <section id="loginView" class="auth-gate">
     <form class="auth-panel" id="loginForm">
-      <div class="brand">
+      <div class="brand auth-brand">
         <div class="brand-mark">RC</div>
         <div>
           <strong>Radio CR Manager</strong>
@@ -35,7 +35,7 @@
     </form>
 
     <form class="auth-panel" id="twoFactorForm" hidden>
-      <div class="brand">
+      <div class="brand auth-brand">
         <div class="brand-mark">RC</div>
         <div>
           <strong>Vérification</strong>
@@ -62,10 +62,14 @@
       </div>
 
       <nav class="nav" aria-label="Navigation principale">
-        <button class="nav-item active" data-view="workspace">Dossier</button>
-        <button class="nav-item" data-view="history">Historique</button>
-        <button class="nav-item" data-view="settings">Paramètres</button>
+        <button class="nav-item active" data-view="workspace"><i data-icon="folder"></i>Dossier</button>
+        <button class="nav-item" data-view="assistant"><i data-icon="spark"></i>Assistant IA</button>
+        <button class="nav-item" data-view="templates"><i data-icon="grid"></i>Modèles</button>
+        <button class="nav-item" data-view="history"><i data-icon="clock"></i>Historique</button>
+        <button class="nav-item" data-view="settings"><i data-icon="gear"></i>Paramètres</button>
       </nav>
+
+      <button class="btn ghost install-btn" id="installBtn" type="button" hidden>Installer l'application</button>
 
       <div class="sync-card">
         <div class="status-dot" id="networkDot"></div>
@@ -128,6 +132,39 @@
             <div class="panel-title">
               <span>2</span>
               <div>
+                <h2>Bulletin patient</h2>
+                <p>Photographiez le bulletin, l'IA prérempile les champs.</p>
+              </div>
+            </div>
+
+            <div class="capture-row">
+              <label class="upload-zone">
+                <input id="bulletinInput" type="file" accept="image/*,application/pdf" capture="environment" hidden />
+                <i data-icon="camera"></i>
+                <span>Ajouter ou prendre une photo</span>
+                <small>Image ou PDF — reste sur cet appareil tant que vous ne lancez pas la lecture.</small>
+              </label>
+              <img id="bulletinPreview" alt="Aperçu du bulletin" hidden />
+            </div>
+
+            <div class="ocr-box">
+              <div class="section-head">
+                <strong>Lecture automatique (IA vision)</strong>
+                <button class="btn secondary small" id="readBulletinBtn" type="button">Lire le bulletin</button>
+              </div>
+              <span id="bulletinStatus" class="hint-text">Nécessite une connexion. Aucune donnée n'est inventée (R2).</span>
+              <details class="ocr-fallback">
+                <summary>Ou collez le texte lu manuellement</summary>
+                <textarea id="ocrText" rows="3" placeholder="Ex. Mr NGALLE Jean, 41 ans, examen radio thorax, médecin Dr Mballa."></textarea>
+                <button class="btn ghost small" id="extractTextBtn" type="button">Remplir depuis ce texte</button>
+              </details>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <span>3</span>
+              <div>
                 <h2>Identité patient</h2>
                 <p>R2 : ne jamais inventer une donnée absente.</p>
               </div>
@@ -151,7 +188,7 @@
         <div class="editor-layout">
           <section class="panel editor-panel">
             <div class="panel-title compact">
-              <span>3</span>
+              <span>4</span>
               <div>
                 <h2>Compte rendu</h2>
                 <p>Dictez ou modifiez manuellement.</p>
@@ -165,13 +202,13 @@
               </div>
               <textarea id="voiceText" rows="3" placeholder="La dictée apparaît ici, ou tapez directement une constatation (ex. foie augmenté de volume, contours bosselés)."></textarea>
               <div class="voice-actions">
-                <button class="icon-btn" id="voiceBtn" type="button">Dicter (micro)</button>
-                <button class="icon-btn" id="stopVoiceBtn" type="button" hidden>Arrêter</button>
+                <button class="icon-btn" id="voiceBtn" type="button"><i data-icon="mic"></i>Dicter (micro)</button>
+                <button class="icon-btn danger" id="stopVoiceBtn" type="button" hidden><i data-icon="stop"></i>Arrêter</button>
                 <label class="icon-btn attach-btn">
                   <input id="audioFileInput" type="file" accept="audio/*" hidden />
-                  Importer un vocal
+                  <i data-icon="clip"></i>Importer un vocal
                 </label>
-                <button class="icon-btn" id="transcribeBtn" type="button" title="Nécessite une connexion (Groq)">Transcrire</button>
+                <button class="icon-btn" id="transcribeBtn" type="button">Transcrire</button>
                 <button class="icon-btn primary-accent" id="applyVoiceBtn" type="button">Intégrer au compte rendu</button>
               </div>
               <p class="microcopy">L'intégration sémantique fonctionne hors ligne. Le raffinage IA (ci-dessous) nécessite une connexion.</p>
@@ -219,14 +256,74 @@
         </div>
       </section>
 
+      <section class="view" id="assistantView">
+        <section class="panel assistant-panel">
+          <div class="panel-title">
+            <span><i data-icon="spark"></i></span>
+            <div>
+              <h2>Assistant de recherche</h2>
+              <p>Posez une question clinique ou radiologique. Recherche web activable pour des réponses à jour.</p>
+            </div>
+          </div>
+
+          <div class="assistant-note">
+            Outil d'aide à la décision. Vérifiez toujours les informations : l'assistant ne remplace pas le jugement médical.
+          </div>
+
+          <div class="assistant-toolbar">
+            <label class="web-toggle">
+              <input type="checkbox" id="assistantWebToggle" checked />
+              Recherche web
+            </label>
+            <div class="assistant-suggestions" id="assistantSuggestions">
+              <button class="chip" type="button">Protocole TDM d'une colique néphrétique</button>
+              <button class="chip" type="button">Classification BI-RADS en échographie mammaire</button>
+              <button class="chip" type="button">Critères de qualité d'une radiographie de thorax</button>
+            </div>
+            <button class="btn ghost small" id="assistantClearBtn" type="button">Effacer</button>
+          </div>
+
+          <div class="chat-thread" id="chatThread" aria-live="polite">
+            <div class="chat-empty" id="chatEmpty">Aucune conversation pour l'instant. Posez votre première question ci-dessous.</div>
+          </div>
+
+          <div class="chat-input-row">
+            <textarea id="chatInput" rows="2" placeholder="Ex : critères BI-RADS 4, ou pose une question clinique."></textarea>
+            <button class="btn primary" id="chatSendBtn" type="button">Envoyer</button>
+          </div>
+          <span id="assistantStatus" class="assistant-status"></span>
+        </section>
+      </section>
+
+      <section class="view" id="templatesView">
+        <section class="panel">
+          <div class="panel-title">
+            <span><i data-icon="grid"></i></span>
+            <div>
+              <h2>Bibliothèque des modèles</h2>
+              <p>Catalogue des examens par hôpital, mis en cache pour un usage hors ligne.</p>
+            </div>
+          </div>
+          <input id="templateSearch" type="search" placeholder="Rechercher un examen…" class="search-input" />
+          <div class="template-list" id="templateList"></div>
+        </section>
+      </section>
+
       <section class="view" id="historyView">
         <section class="panel">
           <div class="panel-title">
-            <span>H</span>
+            <span><i data-icon="clock"></i></span>
             <div>
               <h2>Historique local</h2>
               <p>Comptes rendus enregistrés sur cet appareil, classés par journée.</p>
             </div>
+          </div>
+          <div class="history-tools">
+            <button class="btn secondary" id="exportHistoryBtn" type="button">Exporter (.json)</button>
+            <label class="btn secondary">
+              <input id="importHistoryInput" type="file" accept=".json,application/json" hidden />
+              Importer une archive
+            </label>
           </div>
           <div class="history-list" id="historyList"></div>
         </section>
@@ -235,10 +332,10 @@
       <section class="view" id="settingsView">
         <section class="panel">
           <div class="panel-title">
-            <span>S</span>
+            <span><i data-icon="gear"></i></span>
             <div>
               <h2>Paramètres</h2>
-              <p>Connexion, synchronisation et session.</p>
+              <p>Connexion, synchronisation, dictée et session.</p>
             </div>
           </div>
           <div class="settings-grid">
@@ -253,6 +350,19 @@
             <div>
               <strong>Stockage</strong>
               <span>IndexedDB local — fonctionne hors ligne</span>
+            </div>
+            <div class="settings-span">
+              <strong>Moteur de dictée vocale</strong>
+              <span>Local : l'audio ne quitte jamais l'appareil (recommandé, secret médical). Serveur : transcription via Groq, plus rapide.</span>
+              <select id="sttProviderSelect" style="margin-top:8px;">
+                <option value="server">Serveur (Groq, en ligne)</option>
+                <option value="local">Local hors ligne (Whisper, dans le navigateur)</option>
+              </select>
+              <div id="sttLocalRow" hidden>
+                <select id="sttLocalModelSelect" style="margin-top:8px;"></select>
+                <button class="btn ghost small" id="sttWarmupBtn" type="button" style="margin-top:8px;">Télécharger le modèle maintenant</button>
+                <span id="sttLocalStatus" class="hint-text"></span>
+              </div>
             </div>
             <div>
               <button class="btn danger" id="logoutBtn" type="button">Se déconnecter</button>

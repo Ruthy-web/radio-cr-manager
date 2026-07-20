@@ -4,7 +4,7 @@
  * JAMAIS mis en cache ici — les données vivent dans IndexedDB (db.js), gérée
  * explicitement par l'application (cohérence de synchronisation).
  */
-const CACHE_NAME = 'radio-cr-shell-v1';
+const CACHE_NAME = 'radio-cr-shell-v2';
 const SHELL_FILES = [
   '/app/',
   '/app/index.html',
@@ -13,6 +13,10 @@ const SHELL_FILES = [
   '/app/js/api.js',
   '/app/js/db.js',
   '/app/js/semantic.js',
+  '/app/js/icons.js',
+  '/app/js/stt.js',
+  '/app/js/stt-worker.js',
+  '/app/js/markdown.js',
   '/app/manifest.webmanifest',
   '/app/icons/icon-192.png',
   '/app/icons/icon-512.png',

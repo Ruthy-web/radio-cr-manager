@@ -1,6 +1,17 @@
 import { ReportsStore, CatalogStore, MetaStore } from './db.js';
 import { Api, setUnauthorizedHandler } from './api.js';
 import { semanticInsert } from './semantic.js';
+import { renderIcons } from './icons.js';
+import {
+  transcribeAudio,
+  activeProvider,
+  setProvider,
+  activeLocalModel,
+  setLocalModel,
+  warmupLocalModel,
+  LOCAL_MODELS,
+} from './stt.js';
+import { renderMarkdown } from './markdown.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -12,6 +23,9 @@ const state = {
   recognition: null,
   listening: false,
   audioFile: null,
+  bulletinFile: null,
+  assistantMessages: [],
+  deferredInstallPrompt: null,
   heartbeatTimer: null,
   syncTimer: null,
 };
@@ -23,6 +37,8 @@ async function boot() {
   window.addEventListener('online', () => setNetwork(true));
   window.addEventListener('offline', () => setNetwork(false));
   setNetwork(navigator.onLine);
+  setupInstallPrompt();
+  renderIcons();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/app/service-worker.js').catch(() => {});
@@ -100,16 +116,22 @@ async function enterApp(user) {
 
   setupNavigation();
   setupWorkspace();
+  setupBulletin();
+  setupAssistant();
+  setupTemplates();
   setupHistory();
   setupSettings();
   setupSpeechRecognition();
+  await setupSttSettings();
 
   await loadCatalogWithFallback();
   await renderHistory();
   await refreshSyncLabel();
   newReport();
+  renderChatThread();
 
   startBackgroundTasks();
+  renderIcons();
 
   if (state.online) syncNow(true);
 }
@@ -157,6 +179,28 @@ function stopBackgroundTasks() {
   clearInterval(state.syncTimer);
 }
 
+/* ------------------------------------------------------------ INSTALLATION PWA */
+
+function setupInstallPrompt() {
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    state.deferredInstallPrompt = event;
+    $('installBtn').hidden = false;
+  });
+
+  $('installBtn').addEventListener('click', async () => {
+    if (!state.deferredInstallPrompt) return;
+    state.deferredInstallPrompt.prompt();
+    await state.deferredInstallPrompt.userChoice;
+    state.deferredInstallPrompt = null;
+    $('installBtn').hidden = true;
+  });
+
+  window.addEventListener('appinstalled', () => {
+    $('installBtn').hidden = true;
+  });
+}
+
 /* ------------------------------------------------------------ NAVIGATION */
 
 function setupNavigation() {
@@ -169,6 +213,8 @@ function setupNavigation() {
 
       if (btn.dataset.view === 'history') renderHistory();
       if (btn.dataset.view === 'settings') refreshSyncLabel();
+      if (btn.dataset.view === 'templates') renderTemplateList();
+      if (btn.dataset.view === 'assistant') $('chatInput').focus();
     });
   });
 }
@@ -189,6 +235,7 @@ async function loadCatalogWithFallback() {
   }
 
   hydrateHospitalSelect();
+  renderTemplateList();
 }
 
 function hydrateHospitalSelect() {
@@ -279,6 +326,7 @@ function newReport() {
   $('conclusionInput').value = '';
   $('pageTitle').textContent = 'Nouveau dossier';
 
+  resetBulletinPanel();
   hydrateFromExamTemplate();
   renderResults();
   runStatusChecks();
@@ -384,6 +432,160 @@ function runStatusChecks() {
     .join('');
 }
 
+/* ------------------------------------------------------------ BULLETIN PATIENT (LECTURE IA VISION) */
+
+function setupBulletin() {
+  $('bulletinInput').addEventListener('change', (event) => {
+    const file = event.target.files?.[0] || null;
+    state.bulletinFile = file;
+    const preview = $('bulletinPreview');
+
+    if (file && file.type.startsWith('image/')) {
+      preview.src = URL.createObjectURL(file);
+      preview.hidden = false;
+    } else {
+      preview.hidden = true;
+      preview.removeAttribute('src');
+    }
+
+    $('bulletinStatus').textContent = file
+      ? `${file.name} — prêt, cliquez sur « Lire le bulletin ».`
+      : "Nécessite une connexion. Aucune donnée n'est inventée (R2).";
+  });
+
+  $('readBulletinBtn').addEventListener('click', readBulletin);
+  $('extractTextBtn').addEventListener('click', extractFromPastedText);
+}
+
+function resetBulletinPanel() {
+  state.bulletinFile = null;
+  $('bulletinInput').value = '';
+  $('bulletinPreview').hidden = true;
+  $('bulletinPreview').removeAttribute('src');
+  $('ocrText').value = '';
+  $('bulletinStatus').textContent = "Nécessite une connexion. Aucune donnée n'est inventée (R2).";
+}
+
+async function readBulletin() {
+  if (!state.bulletinFile) {
+    $('bulletinStatus').textContent = "Ajoutez d'abord une photo ou un PDF du bulletin.";
+    return;
+  }
+  if (!state.online) {
+    $('bulletinStatus').textContent = 'La lecture automatique nécessite une connexion.';
+    return;
+  }
+
+  $('bulletinStatus').textContent = 'Lecture en cours (IA vision)…';
+  $('readBulletinBtn').disabled = true;
+
+  try {
+    const data = await Api.bulletin(state.bulletinFile);
+    applyBulletinFields(data);
+    $('bulletinStatus').textContent = "Champs préremplis depuis le bulletin — vérifiez avant d'enregistrer (R2).";
+  } catch (error) {
+    $('bulletinStatus').textContent = `Lecture impossible : ${error.message}`;
+  } finally {
+    $('readBulletinBtn').disabled = false;
+  }
+}
+
+function extractFromPastedText() {
+  const text = $('ocrText').value.trim();
+  if (!text) return;
+
+  applyBulletinFields(parseBulletinText(text));
+  $('bulletinStatus').textContent = "Champs extraits du texte collé — vérifiez avant d'enregistrer (R2).";
+}
+
+function applyBulletinFields(data) {
+  const fullName = [data.lastName, data.firstName].filter(Boolean).join(' ').trim() || data.name;
+  if (fullName) $('patientNameInput').value = fullName;
+
+  if (data.age) {
+    $('patientAgeInput').value = data.age;
+  } else if (data.dob) {
+    const computed = computeAgeFromDob(data.dob);
+    $('patientAgeInput').value = computed || data.dob;
+  }
+
+  if (data.sex) {
+    const s = String(data.sex).trim().toLowerCase();
+    if (s.startsWith('m')) $('patientSexInput').value = 'M';
+    else if (s.startsWith('f')) $('patientSexInput').value = 'F';
+  }
+
+  if (data.record) $('fileNumberInput').value = data.record;
+  if (data.doctor) $('prescriberInput').value = data.doctor;
+
+  if (data.exam) {
+    const hospital = selectedHospital();
+    const needle = data.exam.toLowerCase();
+    const match = hospital?.exam_templates.find(
+      (e) => e.title.toLowerCase().includes(needle) || needle.includes(e.title.toLowerCase())
+    );
+
+    if (match) {
+      $('examSelect').value = match.id;
+      toggleSideField();
+      hydrateFromExamTemplate();
+      renderResults();
+    }
+  }
+
+  if (data.side) {
+    const sideMap = { droit: 'Droit', gauche: 'Gauche', bilateral: 'Bilatéral', bilatéral: 'Bilatéral' };
+    const normalized = sideMap[data.side.toLowerCase()] || data.side;
+    if ([...$('sideSelect').options].some((o) => o.value === normalized)) {
+      $('sideSelect').value = normalized;
+    }
+  }
+
+  runStatusChecks();
+}
+
+function computeAgeFromDob(dob) {
+  const match = String(dob).match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})/);
+  if (!match) return null;
+
+  let [, day, month, year] = match;
+  if (year.length === 2) year = (Number(year) > 30 ? '19' : '20') + year;
+
+  const birth = new Date(Number(year), Number(month) - 1, Number(day));
+  if (Number.isNaN(birth.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+
+  return age >= 0 && age < 130 ? String(age) : null;
+}
+
+function parseBulletinText(text) {
+  const result = {};
+
+  const nameMatch = text.match(/(?:M(?:me|r|lle)?\.?\s+)([A-ZÉÈÀÂÎÔÛÇ][\wÀ-ÿ'-]*(?:\s+[A-ZÉÈÀÂÎÔÛÇ][\wÀ-ÿ'-]*)*)/);
+  if (nameMatch) result.name = nameMatch[1].trim();
+
+  const ageMatch = text.match(/(\d{1,3})\s*an/i);
+  if (ageMatch) result.age = ageMatch[1];
+
+  const sexMatch = text.match(/\b(masculin|féminin|homme|femme)\b/i);
+  if (sexMatch) result.sex = /^m/i.test(sexMatch[1]) ? 'M' : 'F';
+
+  const doctorMatch = text.match(/(?:Dr\.?|Docteur)\s+([A-ZÉÈÀÂÎÔÛÇ][\wÀ-ÿ'-]+(?:\s+[A-ZÉÈÀÂÎÔÛÇ][\wÀ-ÿ'-]+)*)/);
+  if (doctorMatch) result.doctor = `Dr ${doctorMatch[1].trim()}`;
+
+  const recordMatch = text.match(/(?:dossier|n[°ºo]\s*dossier|matricule)\s*[:#]?\s*([\w-]+)/i);
+  if (recordMatch) result.record = recordMatch[1];
+
+  const examMatch = text.match(/(?:examen|exam)\s*[:#]?\s*([^,.;\n]+)/i);
+  if (examMatch) result.exam = examMatch[1].trim();
+
+  return result;
+}
+
 /* ------------------------------------------------------------ DICTATION */
 
 function setupSpeechRecognition() {
@@ -448,19 +650,26 @@ async function transcribeImportedAudio() {
     $('voiceStatus').textContent = "Importez d'abord un fichier audio.";
     return;
   }
-  if (!state.online) {
-    $('voiceStatus').textContent = 'Transcription impossible hors ligne.';
+
+  const provider = await activeProvider();
+  if (provider === 'server' && !state.online) {
+    $('voiceStatus').textContent = 'Transcription serveur impossible hors ligne (passez en local dans Paramètres).';
     return;
   }
 
+  $('transcribeBtn').disabled = true;
   $('voiceStatus').textContent = 'Transcription en cours…';
 
   try {
-    const result = await Api.transcribe(state.audioFile, state.audioFile.name);
-    $('voiceText').value = ($('voiceText').value.trim() + ' ' + result.text).trim();
-    $('voiceStatus').textContent = 'Vocal transcrit.';
+    const { text } = await transcribeAudio(state.audioFile, (message) => {
+      $('voiceStatus').textContent = message;
+    });
+    $('voiceText').value = ($('voiceText').value.trim() + ' ' + text).trim();
+    $('voiceStatus').textContent = provider === 'local' ? 'Vocal transcrit localement (hors ligne).' : 'Vocal transcrit.';
   } catch (error) {
     $('voiceStatus').textContent = `Transcription impossible : ${error.message}`;
+  } finally {
+    $('transcribeBtn').disabled = false;
   }
 }
 
@@ -554,10 +763,163 @@ async function aiGenerateDraft() {
   }
 }
 
+/* ------------------------------------------------------------ ASSISTANT IA (CHAT) */
+
+function setupAssistant() {
+  $('chatSendBtn').addEventListener('click', sendChatMessage);
+  $('chatInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendChatMessage();
+    }
+  });
+
+  $('assistantClearBtn').addEventListener('click', () => {
+    state.assistantMessages = [];
+    $('assistantStatus').textContent = '';
+    $('assistantStatus').classList.remove('error');
+    renderChatThread();
+  });
+
+  $('assistantSuggestions').querySelectorAll('.chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      $('chatInput').value = chip.textContent.trim();
+      sendChatMessage();
+    });
+  });
+}
+
+async function sendChatMessage() {
+  const text = $('chatInput').value.trim();
+  if (!text) return;
+
+  if (!state.online) {
+    $('assistantStatus').textContent = "L'assistant nécessite une connexion.";
+    $('assistantStatus').classList.add('error');
+    return;
+  }
+
+  state.assistantMessages.push({ role: 'user', content: text });
+  $('chatInput').value = '';
+  $('assistantStatus').textContent = '';
+  $('assistantStatus').classList.remove('error');
+  $('chatSendBtn').disabled = true;
+  renderChatThread(true);
+
+  try {
+    const useWeb = $('assistantWebToggle').checked;
+    const payload = state.assistantMessages.map(({ role, content }) => ({ role, content }));
+    const data = await Api.chat(payload, useWeb);
+    state.assistantMessages.push({ role: 'assistant', content: data.text, sources: data.sources || [] });
+  } catch (error) {
+    state.assistantMessages.push({ role: 'assistant', content: `Erreur : ${error.message}`, sources: [] });
+    $('assistantStatus').textContent = error.message;
+    $('assistantStatus').classList.add('error');
+  } finally {
+    $('chatSendBtn').disabled = false;
+    renderChatThread();
+  }
+}
+
+function renderChatThread(typing = false) {
+  const container = $('chatThread');
+
+  if (!state.assistantMessages.length && !typing) {
+    container.innerHTML = '<div class="chat-empty" id="chatEmpty">Aucune conversation pour l\'instant. Posez votre première question ci-dessous.</div>';
+    return;
+  }
+
+  const bubbles = state.assistantMessages
+    .map((m) => {
+      const sourcesHtml = m.sources && m.sources.length
+        ? `<div class="chat-sources"><strong>Sources</strong>${m.sources
+            .map((s) => `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.title || s.url)}</a>`)
+            .join('')}</div>`
+        : '';
+
+      return `
+      <div class="chat-msg ${m.role}">
+        <span class="chat-role">${m.role === 'user' ? 'Vous' : 'Assistant'}</span>
+        <div class="chat-bubble">${renderMarkdown(m.content)}${sourcesHtml}</div>
+      </div>`;
+    })
+    .join('');
+
+  const typingHtml = typing
+    ? '<div class="chat-msg assistant"><span class="chat-role">Assistant</span><div class="chat-bubble"><div class="chat-typing"><span></span><span></span><span></span></div></div></div>'
+    : '';
+
+  container.innerHTML = bubbles + typingHtml;
+  container.scrollTop = container.scrollHeight;
+}
+
+/* ------------------------------------------------------------ MODÈLES (BIBLIOTHÈQUE) */
+
+function setupTemplates() {
+  $('templateSearch').addEventListener('input', renderTemplateList);
+}
+
+function renderTemplateList() {
+  const container = $('templateList');
+  if (!container) return;
+
+  const query = $('templateSearch').value.trim().toLowerCase();
+
+  const groups = state.hospitals
+    .map((hospital) => ({
+      hospital,
+      exams: hospital.exam_templates.filter((e) => !query || e.title.toLowerCase().includes(query)),
+    }))
+    .filter((g) => g.exams.length);
+
+  if (!groups.length) {
+    container.innerHTML = '<div class="history-card">Aucun modèle ne correspond à la recherche.</div>';
+    return;
+  }
+
+  container.innerHTML = groups
+    .map(
+      (g) => `
+    <div class="template-hospital">
+      <div class="template-hospital-head">
+        <span class="dot" style="background:${escapeHtml(g.hospital.colors?.primary || '#0f766e')}"></span>
+        <strong>${escapeHtml(g.hospital.name)}</strong>
+        <span>${g.exams.length} examen(s)</span>
+      </div>
+      <div class="template-grid">
+        ${g.exams
+          .map(
+            (e) => `
+          <div class="template-card" style="cursor:pointer" data-hospital="${g.hospital.id}" data-exam="${e.id}">
+            <strong>${escapeHtml(e.title)}</strong>
+            <span>${e.requires_side ? 'Latéralité requise' : escapeHtml(e.modality || 'Modèle')}</span>
+          </div>`
+          )
+          .join('')}
+      </div>
+    </div>`
+    )
+    .join('');
+
+  container.querySelectorAll('.template-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      $('hospitalSelect').value = card.dataset.hospital;
+      hydrateExamSelect();
+      $('examSelect').value = card.dataset.exam;
+      toggleSideField();
+      hydrateFromExamTemplate();
+      renderResults();
+      runStatusChecks();
+      document.querySelector('[data-view="workspace"]').click();
+    });
+  });
+}
+
 /* ------------------------------------------------------------ HISTORY */
 
 function setupHistory() {
-  // Rien à initialiser au-delà du rendu, déclenché à la navigation.
+  $('exportHistoryBtn').addEventListener('click', exportHistory);
+  $('importHistoryInput').addEventListener('change', importHistory);
 }
 
 async function renderHistory() {
@@ -641,11 +1003,52 @@ async function openReport(clientUuid) {
   $('prescriberInput').value = report.prescriber || '';
   $('techniqueInput').value = report.content.technique || '';
   $('conclusionInput').value = report.content.conclusion || '';
+  resetBulletinPanel();
   renderResults();
   runStatusChecks();
 
   $('pageTitle').textContent = report.patient_name || 'Sans nom';
   document.querySelector('[data-view="workspace"]').click();
+}
+
+async function exportHistory() {
+  const reports = await ReportsStore.all();
+  const blob = new Blob(
+    [JSON.stringify({ exported_at: new Date().toISOString(), reports }, null, 2)],
+    { type: 'application/json' }
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `radio-cr-historique-${todayIso()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importHistory(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const reports = Array.isArray(data) ? data : data.reports || [];
+    let imported = 0;
+
+    for (const report of reports) {
+      if (!report.client_uuid) continue;
+      const existing = await ReportsStore.get(report.client_uuid);
+      if (existing && (existing.updated_at || '') >= (report.updated_at || '')) continue;
+      await ReportsStore.put({ ...report, dirty: true });
+      imported++;
+    }
+
+    await renderHistory();
+    alert(`${imported} compte(s) rendu(s) importé(s) depuis l'archive.`);
+  } catch (error) {
+    alert(`Import impossible : ${error.message}`);
+  }
 }
 
 /* ------------------------------------------------------------ SYNC */
@@ -735,6 +1138,43 @@ async function refreshSyncLabel() {
 function setupSettings() {
   $('logoutBtn').addEventListener('click', logout);
   $('syncBtn').addEventListener('click', () => syncNow());
+}
+
+async function setupSttSettings() {
+  const providerSelect = $('sttProviderSelect');
+  const localRow = $('sttLocalRow');
+  const modelSelect = $('sttLocalModelSelect');
+
+  modelSelect.innerHTML = LOCAL_MODELS.map((m) => `<option value="${m.id}">${escapeHtml(m.label)}</option>`).join('');
+
+  providerSelect.value = await activeProvider();
+  localRow.hidden = providerSelect.value !== 'local';
+  modelSelect.value = await activeLocalModel();
+
+  providerSelect.addEventListener('change', async () => {
+    await setProvider(providerSelect.value);
+    localRow.hidden = providerSelect.value !== 'local';
+  });
+
+  modelSelect.addEventListener('change', async () => {
+    await setLocalModel(modelSelect.value);
+  });
+
+  $('sttWarmupBtn').addEventListener('click', async () => {
+    $('sttWarmupBtn').disabled = true;
+    $('sttLocalStatus').textContent = 'Préparation…';
+
+    try {
+      await warmupLocalModel((message) => {
+        $('sttLocalStatus').textContent = message;
+      });
+      $('sttLocalStatus').textContent = 'Modèle prêt et mis en cache pour un usage hors ligne.';
+    } catch (error) {
+      $('sttLocalStatus').textContent = `Échec : ${error.message}`;
+    } finally {
+      $('sttWarmupBtn').disabled = false;
+    }
+  });
 }
 
 /* ------------------------------------------------------------ UTIL */

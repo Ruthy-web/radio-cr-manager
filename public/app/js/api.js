@@ -82,6 +82,15 @@ export const Api = {
     request('/ai/refine', { method: 'POST', json: { results, conclusion, dictation } }),
 
   draft: (payload) => request('/ai/draft', { method: 'POST', json: payload }),
+
+  bulletin: (file) => {
+    const form = new FormData();
+    form.append('bulletin', file, file.name || 'bulletin.jpg');
+    return request('/ai/bulletin', { method: 'POST', body: form });
+  },
+
+  chat: (messages, useWeb) =>
+    request('/ai/chat', { method: 'POST', json: { messages, use_web: useWeb } }),
 };
 
 export { ApiError };

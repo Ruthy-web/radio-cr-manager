@@ -35,6 +35,11 @@ moteur d'insertion sémantique).
 - [x] Étape 11 — Durcissement final (gestion des utilisateurs, limitation de
       débit générale de l'API, cohérence des rôles sur la synchronisation),
       README complet, revue de sécurité
+- [x] Étape 12 — Parité fonctionnelle complète de la PWA avec l'application de
+      référence (lecture IA vision du bulletin patient, assistant de recherche
+      IA avec sources web, bibliothèque de modèles consultable hors ligne,
+      import/export JSON de l'historique, dictée locale Whisper dans le
+      navigateur) et modernisation visuelle de l'interface
 
 ## Démarrage rapide (développement local)
 
@@ -247,6 +252,15 @@ exposée au client :
   (R2 : zéro invention au-delà de ce qui est fourni) ; portage fidèle du
   prompt système et de la boucle de nouvelle tentative sur troncature
   (`stop_reason: max_tokens`) de `generateAiDraft()`.
+- `POST /api/v1/ai/bulletin` — lecture par IA vision (Claude) d'une photo ou
+  d'un PDF de bulletin de demande d'examen, souvent manuscrit ; renvoie les
+  champs identifiés (identité, âge/date de naissance, sexe, n° dossier,
+  médecin, examen, côté) pour préremplissage, jamais pour écriture directe
+  (R2) ; portage fidèle du prompt de `readWithClaudeVision()`.
+- `POST /api/v1/ai/chat` — assistant de recherche clinique/radiologique,
+  recherche web optionnelle (`web_search_20250305`), sources dédupliquées
+  renvoyées séparément du texte ; portage fidèle du prompt système et du
+  parsing de citations de l'assistant de référence.
 
 Toutes les routes sont protégées par `auth:sanctum` + `token.active` et
 limitées à 20 requêtes/minute/utilisateur (`throttle:ai`) — les appels IA ont
@@ -301,28 +315,45 @@ une interface professionnelle, en JS natif sans framework ni étape de build
 backend n'est qu'une couche de synchronisation, jamais un point de passage
 obligé.
 
-**Périmètre retenu (cœur métier)** — authentification réelle (Sanctum, F1),
-catalogue hôpitaux/examens mis en cache pour fonctionner hors ligne, dictée
-vocale (Web Speech API + import de vocal transcrit via `/api/v1/stt`),
-moteur d'insertion sémantique porté fidèlement en JS (`public/app/js/semantic.js`,
-copie fonctionnelle de `App\Services\SemanticInsertionService`, vérifiée sur
-les mêmes cas que `tests/Unit/SemanticInsertionServiceTest.php`), raffinage
-et rédaction assistée par IA (F4), synchronisation (F6). **Volontairement
-laissés de côté** pour cette étape (fonctionnalités annexes de
-`frontend-existant/app.js` non reprises) : lecture OCR du bulletin par IA
-vision, assistant de chat IA généraliste, sélection multi-fournisseur de
-dictée avec modèles Whisper locaux, import/export JSON manuel de
-l'historique. La finalisation, la signature et la génération du
-DOCX/PDF officiel (étape 5) restent du ressort de l'interface
-d'administration, pas de la PWA.
+**Périmètre** — authentification réelle (Sanctum, F1), catalogue
+hôpitaux/examens mis en cache pour fonctionner hors ligne, dictée vocale
+(Web Speech API, import de vocal transcrit, moteur d'insertion sémantique
+porté fidèlement en JS dans `public/app/js/semantic.js` — copie fonctionnelle
+de `App\Services\SemanticInsertionService`, vérifiée sur les mêmes cas que
+`tests/Unit/SemanticInsertionServiceTest.php`), raffinage et rédaction
+assistée par IA (F4), synchronisation (F6), ainsi que — depuis l'étape 12 —
+la parité complète avec l'application de référence : lecture IA vision du
+bulletin patient (préremplissage des champs, jamais de donnée inventée —
+R2), assistant de recherche conversationnel avec citation de sources web,
+bibliothèque de modèles d'examens consultable et filtrable hors ligne,
+import/export JSON de l'historique local. La finalisation, la signature et
+la génération du DOCX/PDF officiel (étape 5) restent du ressort de
+l'interface d'administration, pas de la PWA.
+
+**Dictée vocale multi-fournisseur (R3/R4)** — contrairement à l'application
+de référence, qui pouvait envoyer l'audio directement à Groq/OpenAI avec une
+clé API stockée côté navigateur, seuls deux moteurs conformes sont proposés :
+« serveur » (proxy `/api/v1/stt` existant, la clé reste côté backend) et
+« local » (Whisper exécuté entièrement dans le navigateur via
+`@huggingface/transformers`, l'audio ne quitte jamais l'appareil et
+fonctionne hors ligne une fois le modèle mis en cache). Les options
+d'appel direct à un fournisseur tiers avec clé côté client ont été
+volontairement omises du portage.
 
 - `public/app/index.html` + `css/app.css` — interface (connexion, dossier,
-  historique, paramètres).
+  bulletin patient, assistant IA, modèles, historique, paramètres).
 - `js/db.js` — IndexedDB (`reports`, `catalog`, `meta` : jeton, dernière
-  synchronisation).
+  synchronisation, préférences de dictée).
 - `js/api.js` — client HTTP (jeton Sanctum, déconnexion locale sur 401).
 - `js/semantic.js` — moteur d'insertion sémantique hors ligne.
-- `js/app.js` — contrôleur applicatif (auth, dossier, dictée, IA, sync).
+- `js/stt.js` + `js/stt-worker.js` — abstraction de dictée multi-fournisseur
+  et worker dédié à l'inférence Whisper locale (WebGPU avec repli WASM).
+- `js/markdown.js` — rendu Markdown minimal et sûr pour les réponses de
+  l'assistant IA.
+- `js/icons.js` — pictogrammes SVG monoline injectés côté client (aucune
+  police d'icônes externe, cohérent avec la CSP stricte).
+- `js/app.js` — contrôleur applicatif (auth, dossier, bulletin, dictée, IA,
+  assistant, modèles, historique, sync).
 - `service-worker.js` — cache uniquement la coquille applicative (jamais les
   réponses `/api/*`, qui portent des données patient et vivent dans
   IndexedDB) pour un chargement hors ligne instantané.
@@ -375,8 +406,10 @@ dans l'archive. Voir `tests/Feature/BackupServiceTest.php`.
   `tests/Feature/Api/Ai/*`.
 - **R4** (clés API IA uniquement côté serveur) — clés Groq/Anthropic saisies
   via l'écran admin, chiffrées en base (`api_credentials`), jamais exposées
-  au client ; la PWA n'appelle que les proxys `/api/v1/{stt,ai/refine,ai/draft}`
-  du backend (étape 6).
+  au client ; la PWA n'appelle que les proxys
+  `/api/v1/{stt,ai/refine,ai/draft,ai/bulletin,ai/chat}` du backend
+  (étapes 6 et 12). La dictée locale (Whisper dans le navigateur, étape 12)
+  ne nécessite aucune clé : l'inférence tourne entièrement côté client.
 - **R5** (PWA offline-first préservée, le backend n'est qu'une couche de
   synchronisation) — `public/app/` fonctionne sans réseau (IndexedDB,
   service worker limité à la coquille applicative) ; la synchronisation
