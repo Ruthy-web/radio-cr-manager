@@ -18,7 +18,8 @@ moteur d'insertion sémantique).
       extraits automatiquement des 5 DOCX institutionnels, CRUD admin complet)
 - [x] Étape 3 — CRUD comptes rendus + versions + historique groupé par
       journée, recherche (nom/hôpital/date), statuts brouillon/finalisé/signé
-- [ ] Étape 4 — Moteur d'insertion sémantique
+- [x] Étape 4 — Moteur d'insertion sémantique (portage fidèle de
+      frontend-existant/app.js : synonymes, latéralité, valeurs numériques)
 - [ ] Étape 5 — Génération DOCX/PDF depuis les templates réels
 - [ ] Étape 6 — Proxys IA (transcription + rédaction)
 - [ ] Étape 7 — API de synchronisation PWA
@@ -76,6 +77,21 @@ la latéralité et la couleur dominante des titres — il sera réutilisé et
 enrichi d'une interface de prévisualisation à l'étape 8 (assistant
 « Ajouter un hôpital »). Gestion des hôpitaux et de leur catalogue d'examens :
 `/admin/hopitaux` (réservé au rôle `admin`).
+
+## Moteur d'insertion sémantique (F5)
+
+`App\Services\SemanticInsertionService` est un portage fidèle des fonctions
+`semanticInsert`, `matchScore` et `TERM_SYNONYMS` (~40 groupes) de
+`frontend-existant/app.js`, la PWA de référence. Mêmes règles exactes :
+score de correspondance par jetons + synonymes, bonus/malus de latéralité
+gauche/droite, remplacement ciblé des valeurs numériques (ex. « battement
+cardiaque = 377 bpm »), réécriture de la conclusion si une anomalie est
+dictée alors qu'elle dit encore « normal ». Contrairement à la version JS
+qui manipule le DOM, ce service opère directement sur le tableau `results`
+du JSON `content` d'un `Report`. Il n'est pas encore branché à une
+interface (ce sera fait avec la dictée vocale/STT à l'étape 6 et la refonte
+de la PWA à l'étape 9) ; voir `tests/Unit/SemanticInsertionServiceTest.php`
+pour les cas obligatoires du cahier des charges.
 
 ## Stack
 

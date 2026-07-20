@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f766e" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://api.anthropic.com https://api.openai.com https://api.groq.com https://cdn.jsdelivr.net https://huggingface.co https://*.huggingface.co https://*.hf.co https://*.workers.dev; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" />
+    <meta name="referrer" content="no-referrer" />
+    <title>RadAssist Hybrid</title>
+    <link rel="manifest" href="manifest.webmanifest?v=17" />
+    <link rel="stylesheet" href="styles.css?v=17" />
+  </head>
+  <body>
+    <section class="auth-gate" id="authGate" aria-label="Connexion">
+      <div class="auth-panel">
+        <div class="brand auth-brand">
+          <div class="brand-mark">RA</div>
+          <div>
+            <strong>RadAssist</strong>
+            <span>Acces reserve</span>
+          </div>
+        </div>
+        <h1>Connexion securisee</h1>
+        <p>Entrez le code d'acces fourni par l'administrateur pour ouvrir le logiciel.</p>
+        <label>
+          Code d'acces
+          <input id="accessCodeInput" type="password" inputmode="numeric" autocomplete="current-password" />
+        </label>
+        <button class="btn primary" id="unlockBtn">Se connecter</button>
+        <span id="authStatus" class="auth-status"></span>
+      </div>
+    </section>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">RA</div>
+          <div>
+            <strong>RadAssist</strong>
+            <span>Comptes rendus radiologiques</span>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="Navigation principale">
+          <button class="nav-item active" data-view="workspace">Dossier patient</button>
+          <button class="nav-item" data-view="assistant">Assistant IA</button>
+          <button class="nav-item" data-view="templates">Templates</button>
+          <button class="nav-item" data-view="history">Historique</button>
+          <button class="nav-item" data-view="settings">Parametres</button>
+        </nav>
+
+        <div class="sync-card">
+          <div class="status-dot" id="networkDot"></div>
+          <div>
+            <strong id="networkLabel">Verification...</strong>
+            <span>Mode hybride local + synchronisation future</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Plateforme hybride</p>
+            <h1>Generation assistee de comptes rendus</h1>
+          </div>
+          <div class="top-actions">
+            <button class="btn ghost" id="installBtn" hidden>Installer</button>
+            <button class="btn secondary" id="resetBtn">Nouveau dossier</button>
+            <button class="btn primary" id="saveBtn">Enregistrer</button>
+          </div>
+        </header>
+
+        <section class="view active" id="workspace">
+          <div class="workflow-grid">
+            <section class="panel">
+              <div class="panel-title">
+                <span>1</span>
+                <div>
+                  <h2>Contexte clinique</h2>
+                  <p>Choisissez l'hopital, l'examen et le template de depart.</p>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <label>
+                  Hopital
+                  <select id="hospitalSelect"></select>
+                </label>
+                <label>
+                  Examen
+                  <select id="examSelect"></select>
+                </label>
+                <label>
+                  Cote
+                  <select id="sideSelect">
+                    <option value="">Non applicable</option>
+                    <option value="Droit">Droit</option>
+                    <option value="Gauche">Gauche</option>
+                    <option value="Bilateral">Bilateral</option>
+                  </select>
+                </label>
+                <label>
+                  Date
+                  <input id="dateInput" type="date" />
+                </label>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <span>2</span>
+                <div>
+                  <h2>Bulletin patient</h2>
+                  <p>Photographiez le bulletin, puis validez les champs detectes.</p>
+                </div>
+              </div>
+
+              <div class="capture-row">
+                <label class="upload-zone">
+                  <input id="imageInput" type="file" accept="image/*,application/pdf" capture="environment" />
+                  <span>Ajouter ou prendre une photo</span>
+                  <small>La photo est conservee au dossier. L'extraction automatique cloud vient ensuite.</small>
+                </label>
+                <img id="previewImage" alt="Apercu du bulletin" hidden />
+              </div>
+
+              <div class="ocr-box">
+                <div class="section-head">
+                  <strong>Lecture du bulletin</strong>
+                  <button class="btn secondary" id="extractPatientBtn">Remplir les champs</button>
+                </div>
+                <textarea id="ocrText" rows="4" placeholder="Collez ici le texte lu sur le bulletin, puis cliquez sur Remplir les champs. Exemple: Noms NGALLE, Prenoms Jean, age 41 ans, examen radio thorax, medecin Dr Mballa."></textarea>
+                <div class="quick-actions">
+                  <button class="btn ghost" id="sampleBulletinBtn">Tester avec l'exemple</button>
+                  <span id="ocrStatus">En attente du texte du bulletin.</span>
+                </div>
+              </div>
+
+              <div class="form-grid">
+                <label>Nom <input id="lastNameInput" autocomplete="off" /></label>
+                <label>Prenom <input id="firstNameInput" autocomplete="off" /></label>
+                <label>Age <input id="ageInput" autocomplete="off" /></label>
+                <label>Sexe <select id="sexInput"><option></option><option>F</option><option>M</option></select></label>
+                <label>Medecin prescripteur <input id="doctorInput" autocomplete="off" /></label>
+                <label>Numero dossier <input id="recordInput" autocomplete="off" /></label>
+              </div>
+            </section>
+          </div>
+
+          <div class="editor-layout">
+            <section class="panel editor-panel">
+              <div class="panel-title compact">
+                <span>3</span>
+                <div>
+                  <h2>Compte rendu</h2>
+                  <p>Modifiez manuellement ou dictez les changements du radiologue.</p>
+                </div>
+              </div>
+
+            <div class="toolbar">
+                <button class="icon-btn" id="generateBtn" title="Generer depuis le template">Generer</button>
+                <button class="icon-btn" id="voiceBtn" title="Dicter une observation">Dicter</button>
+                <button class="icon-btn" id="stopVoiceBtn" title="Arreter la dictee">Stop</button>
+                <button class="icon-btn" id="applyVoiceBtn" title="Inserer la dictee">Inserer dictee</button>
+                <button class="icon-btn" id="aiDraftBtn" title="Generer un compte rendu libre avec l'IA">IA libre</button>
+                <button class="icon-btn" id="exportWordBtn" title="Exporter Word">Word</button>
+                <button class="icon-btn" id="exportPdfBtn" title="Exporter PDF">PDF</button>
+              </div>
+
+              <div class="voice-box">
+                <div class="section-head">
+                  <strong>Dictee</strong>
+                  <span id="voiceStatus">Verification du micro...</span>
+                </div>
+                <textarea id="voiceText" rows="3" placeholder="La transcription vocale apparaitra ici. Exemple: foie augmente de taille, contours bosseles."></textarea>
+                <div class="voice-actions">
+                  <label class="icon-btn attach-btn" title="Importer un vocal (WhatsApp, .ogg/.opus/.m4a/.mp3)">
+                    <input id="audioFileInput" type="file" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav,.webm" hidden />
+                    Importer un vocal
+                  </label>
+                  <button class="icon-btn" id="transcribeBtn" type="button" title="Transcrire le vocal importe en texte">Generer (transcrire)</button>
+                  <span id="audioName" class="audio-name"></span>
+                </div>
+                <p class="microcopy">Dictez au micro (Chrome/Edge) ou importez un vocal WhatsApp puis cliquez sur "Generer (transcrire)". Ensuite "Inserer dictee" integre intelligemment les constatations dans le compte rendu.</p>
+              </div>
+
+              <div class="ai-box">
+                <div class="section-head">
+                  <strong>Compte rendu libre</strong>
+                  <span id="aiStatus">IA prete si une cle est configuree.</span>
+                </div>
+                <textarea id="aiPromptText" rows="3" placeholder="Exemple: genere un compte rendu de radiographie de la jambe droite pour l'hopital NKOULOU. Anomalies : fracture spiroide du tiers moyen du tibia, sans deplacement."></textarea>
+                <div class="ai-actions">
+                  <label class="icon-btn attach-btn" title="Joindre une image, un PDF ou un Word">
+                    <input id="aiFileInput" type="file" accept="image/*,application/pdf,.docx,.txt,.csv" multiple hidden />
+                    Joindre un fichier
+                  </label>
+                  <span id="aiFiles" class="audio-name"></span>
+                </div>
+              </div>
+
+              <article id="reportEditor" class="report-editor" contenteditable="true" spellcheck="true"></article>
+            </section>
+
+            <aside class="panel intelligence-panel">
+              <h2>Assistant de controle</h2>
+              <div class="check-list" id="qualityChecks"></div>
+              <div class="hint-box">
+                <strong>Regle medicale</strong>
+                <p>L'application prepare et structure. Le radiologue ou la secretaire valide toujours avant export.</p>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="assistant">
+          <section class="panel assistant-panel">
+            <div class="panel-title">
+              <span>IA</span>
+              <div>
+                <h2>Assistant de recherche Claude</h2>
+                <p>Posez une question clinique ou radiologique. Recherche web activable pour des reponses a jour.</p>
+              </div>
+            </div>
+
+            <div class="assistant-note">
+              Outil d'aide a la decision. Verifiez toujours les informations : l'assistant ne remplace pas le jugement medical ni les recommandations officielles.
+            </div>
+
+            <div class="assistant-toolbar">
+              <label class="web-toggle">
+                <input type="checkbox" id="assistantWebToggle" checked />
+                Recherche web
+              </label>
+              <div class="assistant-suggestions" id="assistantSuggestions">
+                <button class="chip" type="button">Protocole TDM d'une colique nephretique</button>
+                <button class="chip" type="button">Classification BI-RADS en echographie mammaire</button>
+                <button class="chip" type="button">Criteres de qualite d'une radiographie de thorax</button>
+              </div>
+              <button class="btn ghost" id="assistantClearBtn" type="button">Effacer</button>
+            </div>
+
+            <div class="chat-thread" id="chatThread" aria-live="polite">
+              <div class="chat-empty" id="chatEmpty">
+                Aucune conversation pour l'instant. Posez votre premiere question ci-dessous.
+              </div>
+            </div>
+
+            <div class="chat-attachments" id="chatAttachments"></div>
+            <div class="chat-input-row">
+              <textarea id="chatInput" rows="2" placeholder="Ex : genere un compte rendu normal d'une radiographie du thorax pour l'Hopital Militaire, ou pose une question clinique."></textarea>
+              <div class="chat-input-actions">
+                <label class="icon-btn attach-btn" title="Joindre une image ou un PDF">
+                  <input id="chatFileInput" type="file" accept="image/*,application/pdf,.docx,.txt,.csv,.md,.json" multiple hidden />
+                  Joindre
+                </label>
+                <button class="icon-btn" id="chatVoiceBtn" type="button" title="Dicter la question">Dicter</button>
+                <button class="btn primary" id="chatSendBtn" type="button">Envoyer</button>
+              </div>
+            </div>
+            <span id="assistantStatus" class="assistant-status"></span>
+          </section>
+        </section>
+
+        <section class="view" id="templates">
+          <section class="panel">
+            <div class="panel-title">
+              <span>T</span>
+              <div>
+                <h2>Bibliotheque des templates</h2>
+                <p>Premiere base locale inspiree du document Word fourni.</p>
+              </div>
+            </div>
+            <div class="template-list" id="templateList"></div>
+          </section>
+        </section>
+
+        <section class="view" id="history">
+          <section class="panel">
+            <div class="panel-title">
+              <span>H</span>
+              <div>
+                <h2>Historique local</h2>
+                <p>Les comptes rendus restent sur l'appareil, classes par journee.</p>
+              </div>
+            </div>
+            <div class="history-tools">
+              <input id="historyImportInput" type="file" accept=".json,application/json" hidden />
+              <button class="btn secondary" id="historyImportBtn" type="button">Importer une archive (.json)</button>
+            </div>
+            <div class="history-list" id="historyList"></div>
+          </section>
+        </section>
+
+        <section class="view" id="settings">
+          <section class="panel">
+            <div class="panel-title">
+              <span>S</span>
+              <div>
+                <h2>Parametres techniques</h2>
+                <p>Les connexions serveur seront ajoutees quand le prototype sera valide.</p>
+              </div>
+            </div>
+            <div class="settings-grid">
+              <div>
+                <strong>Version</strong>
+                <span>RadAssist Hybrid — build v14 (dictee IA + vocal WhatsApp + import intelligent)</span>
+              </div>
+              <div>
+                <strong>Stockage</strong>
+                <span>LocalStorage aujourd'hui, IndexedDB/Supabase demain</span>
+              </div>
+              <div>
+                <strong>OCR</strong>
+                <span>Emplacement prevu pour OpenAI Vision, Google Vision ou Azure</span>
+              </div>
+              <div>
+                <strong>Dictee</strong>
+                <span>Web Speech API si disponible dans le navigateur</span>
+              </div>
+              <div>
+                <strong>Code d'acces</strong>
+                <span>Code local par defaut: 2606. Modifiable sur ce poste.</span>
+                <input id="adminCodeInput" type="password" placeholder="Nouveau code local" autocomplete="new-password" />
+                <button class="btn secondary" id="changeCodeBtn" type="button">Modifier le code</button>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <template id="printTemplate">
+      <html>
+        <head>
+          <title>Compte rendu</title>
+          <style>
+            /* margin:0 sur @page = le navigateur n'imprime NI l'URL, NI la date, NI le titre. */
+            @page { size: A4; margin: 0; }
+            html, body { margin: 0; padding: 0; }
+            body {
+              font-family: "Arial Narro", "Arial Narrow", Arial, sans-serif;
+              color: #111827;
+              padding: 15mm 16mm;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .report { max-width: 780px; margin: 0 auto; line-height: 1.55; }
+            h2 { text-align: center; text-transform: uppercase; font-size: 18px; }
+            /* Pas de liseres decoratifs ajoutes par l'app : on garde la mise en page du template. */
+            h3 { margin-top: 20px; padding-bottom: 4px; border-bottom: none; }
+          </style>
+        </head>
+        <body><main class="report"></main></body>
+      </html>
+    </template>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
+    <script src="templates.js?v=17"></script>
+    <script src="app.js?v=17"></script>
+  </body>
+</html>
