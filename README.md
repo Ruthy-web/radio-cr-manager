@@ -26,7 +26,8 @@ moteur d'insertion sémantique).
       Anthropic, clés chiffrées en base, journalisation d'usage sans PHI)
 - [x] Étape 7 — API de synchronisation PWA (`/api/v1/reports/sync`, idempotente
       par `client_uuid`, dernier écrivain gagnant, la PWA reste offline-first)
-- [ ] Étape 8 — Assistant « Ajouter un hôpital »
+- [x] Étape 8 — Assistant « Ajouter un hôpital » (import DOCX, prévisualisation
+      corrigible, aucun cas particulier codé en dur)
 - [ ] Étape 9 — Refonte professionnelle de la PWA
 - [ ] Étape 10 — Sauvegardes, administration, audit
 - [ ] Étape 11 — Durcissement final, README complet, revue de sécurité
@@ -83,10 +84,32 @@ php artisan db:seed --class=HospitalCatalogSeeder
 
 Le moteur d'extraction (`App\Services\HospitalDocxParser`) détecte un examen
 par bloc (saut de page + titre), ses sections TECHNIQUE/RÉSULTATS/CONCLUSION,
-la latéralité et la couleur dominante des titres — il sera réutilisé et
-enrichi d'une interface de prévisualisation à l'étape 8 (assistant
-« Ajouter un hôpital »). Gestion des hôpitaux et de leur catalogue d'examens :
-`/admin/hopitaux` (réservé au rôle `admin`).
+la latéralité et la couleur dominante des titres. Gestion des hôpitaux et de
+leur catalogue d'examens : `/admin/hopitaux` (réservé au rôle `admin`).
+
+### Assistant « Ajouter un hôpital » (F2 complet)
+
+`/admin/hopitaux/importer` réutilise directement `HospitalDocxParser` — le
+même moteur que le catalogue des 5 hôpitaux de départ, sans aucun cas
+particulier codé en dur — pour ajouter un nombre illimité d'hôpitaux :
+
+1. **Upload** — nom, radiologue signataire, DOCX de comptes rendus normaux.
+2. **Analyse** — le document est parsé côté serveur et mis en attente
+   (`storage/app/private/hospital-imports/`, `App\Services\HospitalImportStaging`,
+   30 min) : ni Hospital ni ExamTemplate ne sont créés à ce stade.
+3. **Prévisualisation corrigible** — nom/slug/couleur/radiologue de l'hôpital
+   et tableau des examens détectés (titre, latéralité, aperçu technique,
+   nombre de résultats, aperçu conclusion) ; le titre et la latéralité de
+   chaque examen sont corrigibles avant validation (les deux champs à
+   l'origine des vrais faux positifs de détection). Le contenu détaillé
+   (technique, résultats, conclusion) reste modifiable individuellement après
+   import via l'écran d'édition d'examen existant.
+4. **Confirmation** — création de l'hôpital et de son catalogue d'examens
+   (`updateOrCreate` par titre, comme le seeder initial), déplacement du DOCX
+   vers `storage/app/templates/{slug}.docx` (chemin lu par
+   `DocxReportGenerator`, F3).
+
+Voir `tests/Feature/Admin/HospitalImportControllerTest.php`.
 
 ## Moteur d'insertion sémantique (F5)
 

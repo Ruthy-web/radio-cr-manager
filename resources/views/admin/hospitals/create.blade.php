@@ -18,7 +18,7 @@
 
     <p class="mt-6 text-xs text-slate-500">
         Pour importer automatiquement le catalogue d'examens à partir d'un DOCX de comptes rendus normaux,
-        utilisez l'assistant « Ajouter un hôpital » (à venir).
+        utilisez plutôt <a href="{{ route('admin.hospitals.import.create') }}" class="underline decoration-slate-300 hover:decoration-slate-900">l'assistant d'import</a>.
     </p>
 </div>
 @endsection

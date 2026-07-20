@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\ApiCredentialController;
 use App\Http\Controllers\Admin\ExamTemplateController;
 use App\Http\Controllers\Admin\HospitalController;
+use App\Http\Controllers\Admin\HospitalImportController;
 use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::get('/', fn () => view('admin.dashboard'))->name('dashboard');
 
         Route::middleware('role:admin')->group(function () {
+            Route::prefix('hopitaux/importer')->name('hospitals.import.')->group(function () {
+                Route::get('/', [HospitalImportController::class, 'create'])->name('create');
+                Route::post('/analyser', [HospitalImportController::class, 'analyze'])->name('analyze');
+                Route::post('/confirmer', [HospitalImportController::class, 'store'])->name('store');
+            });
+
             Route::post('/hopitaux/{hospital}/reactiver', [HospitalController::class, 'restore'])->name('hospitals.restore');
             Route::resource('hopitaux', HospitalController::class)
                 ->parameters(['hopitaux' => 'hospital'])

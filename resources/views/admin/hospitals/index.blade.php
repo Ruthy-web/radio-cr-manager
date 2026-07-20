@@ -5,10 +5,16 @@
 @section('admin-content')
 <div class="mb-6 flex items-center justify-between">
     <h1 class="text-xl font-semibold text-slate-900">Hôpitaux</h1>
-    <a href="{{ route('admin.hospitals.create') }}"
-       class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
-        Ajouter un hôpital
-    </a>
+    <div class="flex items-center gap-3">
+        <a href="{{ route('admin.hospitals.import.create') }}"
+           class="rounded-md border border-slate-300 px-4 py-2 text-sm hover:bg-slate-100">
+            Importer depuis un DOCX
+        </a>
+        <a href="{{ route('admin.hospitals.create') }}"
+           class="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700">
+            Ajouter un hôpital
+        </a>
+    </div>
 </div>
 
 <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
