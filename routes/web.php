@@ -46,6 +46,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::delete('/{report}', [ReportController::class, 'destroy'])->name('destroy');
             Route::post('/{report}/finaliser', [ReportController::class, 'finalize'])->name('finalize');
             Route::post('/{report}/signer', [ReportController::class, 'sign'])->name('sign');
+            Route::post('/{report}/document', [ReportController::class, 'generateDocument'])->name('document.generate');
+            Route::get('/{report}/pieces-jointes/{attachment}', [ReportController::class, 'downloadAttachment'])->name('attachments.download');
             Route::post('/{report}/versions/{version}/restaurer', [ReportController::class, 'restoreVersion'])->name('versions.restore');
         });
     });

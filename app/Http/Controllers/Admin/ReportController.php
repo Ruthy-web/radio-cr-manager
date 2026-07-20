@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Enums\UserRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ReportRequest;
+use App\Jobs\GenerateReportDocumentJob;
+use App\Models\Attachment;
 use App\Models\ExamTemplate;
 use App\Models\Hospital;
 use App\Models\Report;
@@ -12,7 +14,9 @@ use App\Models\ReportVersion;
 use App\Services\AuditLogger;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
@@ -90,7 +94,7 @@ class ReportController extends Controller
 
     public function edit(Report $report): View
     {
-        $report->load(['hospital', 'examTemplate', 'versions.author']);
+        $report->load(['hospital', 'examTemplate', 'versions.author', 'attachments']);
         $hospitals = Hospital::with(['examTemplates' => fn ($q) => $q->orderBy('title')])
             ->orderBy('name')
             ->get();
@@ -144,6 +148,36 @@ class ReportController extends Controller
         $this->audit->log('compte_rendu_signe', $request->user(), $report, $request);
 
         return back()->with('status', 'Compte rendu signé.');
+    }
+
+    /**
+     * Génère le DOCX/PDF du compte rendu depuis le template institutionnel réel (F3).
+     * Exécuté de façon synchrone (dispatchSync) pour garantir un retour immédiat
+     * à l'utilisateur sans dépendre d'un worker de file d'attente actif.
+     */
+    public function generateDocument(Request $request, Report $report): RedirectResponse
+    {
+        $this->authorizeMedical($request);
+
+        GenerateReportDocumentJob::dispatchSync($report->id);
+
+        $this->audit->log('compte_rendu_document_genere', $request->user(), $report, $request);
+
+        return redirect()
+            ->route('admin.reports.edit', $report)
+            ->with('status', 'Document généré.');
+    }
+
+    public function downloadAttachment(Report $report, Attachment $attachment): StreamedResponse
+    {
+        abort_unless($attachment->report_id === $report->id, 404);
+        abort_unless(Storage::disk('local')->exists($attachment->path), 404);
+
+        $filename = ($report->patient_name ? str($report->patient_name)->slug() : 'compte-rendu')
+            .'-'.$report->id
+            .'.'.($attachment->mime === 'application/pdf' ? 'pdf' : 'docx');
+
+        return Storage::disk('local')->download($attachment->path, $filename);
     }
 
     public function restoreVersion(Request $request, Report $report, ReportVersion $version): RedirectResponse

@@ -57,7 +57,38 @@
         </div>
     </div>
 
-    <div>
+    <div class="space-y-6">
+        <div class="rounded-xl border border-slate-200 bg-white p-6">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-slate-500">Document généré</h2>
+                @if ($canEditMedical)
+                    <form method="POST" action="{{ route('admin.reports.document.generate', $report) }}">
+                        @csrf
+                        <button type="submit" class="rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100">
+                            Générer le document
+                        </button>
+                    </form>
+                @endif
+            </div>
+            <ul class="space-y-3 text-sm">
+                @forelse ($report->attachments as $attachment)
+                    <li class="flex items-center justify-between gap-2 border-b border-slate-100 pb-3 last:border-0">
+                        <div>
+                            <div class="text-slate-700">{{ $attachment->mime === 'application/pdf' ? 'PDF' : 'DOCX' }}</div>
+                            <div class="text-xs text-slate-500">
+                                {{ number_format($attachment->size / 1024, 0) }} Ko
+                                &middot; {{ $attachment->updated_at->format('d/m/Y H:i') }}
+                            </div>
+                        </div>
+                        <a href="{{ route('admin.reports.attachments.download', [$report, $attachment]) }}"
+                           class="rounded-md border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100">Télécharger</a>
+                    </li>
+                @empty
+                    <li class="text-slate-500">Aucun document généré pour le moment.</li>
+                @endforelse
+            </ul>
+        </div>
+
         <div class="rounded-xl border border-slate-200 bg-white p-6">
             <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">Historique des versions</h2>
             <ul class="space-y-3 text-sm">
