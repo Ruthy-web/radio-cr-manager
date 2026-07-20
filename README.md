@@ -28,7 +28,8 @@ moteur d'insertion sémantique).
       par `client_uuid`, dernier écrivain gagnant, la PWA reste offline-first)
 - [x] Étape 8 — Assistant « Ajouter un hôpital » (import DOCX, prévisualisation
       corrigible, aucun cas particulier codé en dur)
-- [ ] Étape 9 — Refonte professionnelle de la PWA
+- [x] Étape 9 — Refonte professionnelle de la PWA (cœur métier : auth réelle,
+      catalogue hors ligne, dictée + moteur sémantique, IA, synchronisation)
 - [ ] Étape 10 — Sauvegardes, administration, audit
 - [ ] Étape 11 — Durcissement final, README complet, revue de sécurité
 
@@ -129,10 +130,11 @@ pour les cas obligatoires du cahier des charges.
 ## Stack
 
 Laravel 12 · PHP 8.3+ · Sanctum (API + sessions) · MySQL 8 en production
-(SQLite pour les tests) · Blade + Alpine.js + Tailwind pour l'admin ·
-manipulation XML OOXML directe (ZipArchive/DOMDocument, sans reconstruction
-du document) + LibreOffice headless pour la génération DOCX/PDF · Pest pour
-les tests.
+(SQLite pour les tests) · Blade + Alpine.js + Tailwind pour l'admin · PWA en
+JS natif sans framework (IndexedDB, service worker) pour la dictée de
+terrain · manipulation XML OOXML directe (ZipArchive/DOMDocument, sans
+reconstruction du document) + LibreOffice headless pour la génération
+DOCX/PDF · Pest pour les tests.
 
 ## Sécurité (F9)
 
@@ -263,5 +265,47 @@ rattrapage au retour du réseau, jamais un point de passage obligé.
   via `has_more` + `updated_at` du dernier élément), y compris les comptes
   rendus archivés entre-temps (`deleted: true`) pour que la PWA purge son
   stockage local.
+- `GET /api/v1/catalog` — hôpitaux actifs et leurs examens actifs, pour mise
+  en cache locale (IndexedDB) et création de compte rendu hors ligne.
 
-Voir `tests/Feature/Api/ReportSyncTest.php`.
+Voir `tests/Feature/Api/ReportSyncTest.php` et `tests/Feature/Api/CatalogControllerTest.php`.
+
+## Refonte de la PWA (F11)
+
+`public/app/` (servi statiquement, `/app/`) remplace `frontend-existant/` par
+une interface professionnelle, en JS natif sans framework ni étape de build
+(cohérent avec l'app de référence), qui reste **offline-first** (R5) : le
+backend n'est qu'une couche de synchronisation, jamais un point de passage
+obligé.
+
+**Périmètre retenu (cœur métier)** — authentification réelle (Sanctum, F1),
+catalogue hôpitaux/examens mis en cache pour fonctionner hors ligne, dictée
+vocale (Web Speech API + import de vocal transcrit via `/api/v1/stt`),
+moteur d'insertion sémantique porté fidèlement en JS (`public/app/js/semantic.js`,
+copie fonctionnelle de `App\Services\SemanticInsertionService`, vérifiée sur
+les mêmes cas que `tests/Unit/SemanticInsertionServiceTest.php`), raffinage
+et rédaction assistée par IA (F4), synchronisation (F6). **Volontairement
+laissés de côté** pour cette étape (fonctionnalités annexes de
+`frontend-existant/app.js` non reprises) : lecture OCR du bulletin par IA
+vision, assistant de chat IA généraliste, sélection multi-fournisseur de
+dictée avec modèles Whisper locaux, import/export JSON manuel de
+l'historique. La finalisation, la signature et la génération du
+DOCX/PDF officiel (étape 5) restent du ressort de l'interface
+d'administration, pas de la PWA.
+
+- `public/app/index.html` + `css/app.css` — interface (connexion, dossier,
+  historique, paramètres).
+- `js/db.js` — IndexedDB (`reports`, `catalog`, `meta` : jeton, dernière
+  synchronisation).
+- `js/api.js` — client HTTP (jeton Sanctum, déconnexion locale sur 401).
+- `js/semantic.js` — moteur d'insertion sémantique hors ligne.
+- `js/app.js` — contrôleur applicatif (auth, dossier, dictée, IA, sync).
+- `service-worker.js` — cache uniquement la coquille applicative (jamais les
+  réponses `/api/*`, qui portent des données patient et vivent dans
+  IndexedDB) pour un chargement hors ligne instantané.
+
+**Limite connue** — l'API de synchronisation (F6) accepte le contenu envoyé
+par tout utilisateur authentifié sans distinguer les rôles (contrairement à
+`/admin/comptes-rendus` où la secrétaire ne peut pas rédiger le contenu
+médical, F1) : à traiter si la PWA est mise entre les mains d'un profil
+secrétaire.

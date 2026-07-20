@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\Ai\DraftController;
 use App\Http\Controllers\Api\V1\Ai\RefineController;
 use App\Http\Controllers\Api\V1\Ai\SttController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\CatalogController;
 use App\Http\Controllers\Api\V1\HeartbeatController;
 use App\Http\Controllers\Api\V1\ReportSyncController;
 use Illuminate\Support\Facades\Route;
@@ -19,6 +20,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::middleware(['auth:sanctum', 'token.active'])->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout'])->name('auth.logout');
         Route::get('/heartbeat', HeartbeatController::class)->name('heartbeat');
+        Route::get('/catalog', CatalogController::class)->name('catalog');
 
         Route::prefix('reports')->name('reports.')->group(function () {
             Route::get('/sync', [ReportSyncController::class, 'pull'])->name('sync.pull');

@@ -12,6 +12,13 @@ Route::get('/', function () {
     return redirect()->route(auth()->check() ? 'admin.dashboard' : 'admin.login');
 });
 
+// PWA (F11) : application statique servie depuis public/app/, indépendante
+// de l'interface d'administration (jeton Sanctum, pas de session web). Route
+// explicite en secours si la configuration du serveur web ne résout pas
+// elle-même l'index de répertoire (R5 : la PWA doit rester accessible).
+Route::get('/app', fn () => redirect('/app/'));
+Route::get('/app/', fn () => response()->file(public_path('app/index.html')));
+
 Route::prefix('admin')->name('admin.')->group(function () {
     Route::middleware('guest')->group(function () {
         Route::get('/connexion', [LoginController::class, 'create'])->name('login');

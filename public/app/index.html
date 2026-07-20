@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#1F3864" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'" />
+  <title>Radio CR Manager</title>
+  <link rel="manifest" href="/app/manifest.webmanifest" />
+  <link rel="icon" href="/app/icons/icon-192.png" />
+  <link rel="stylesheet" href="/app/css/app.css" />
+</head>
+<body>
+  <section id="loginView" class="auth-gate">
+    <form class="auth-panel" id="loginForm">
+      <div class="brand">
+        <div class="brand-mark">RC</div>
+        <div>
+          <strong>Radio CR Manager</strong>
+          <span>Dictée &amp; rédaction de comptes rendus</span>
+        </div>
+      </div>
+
+      <label>
+        E-mail
+        <input id="loginEmail" type="email" autocomplete="username" required />
+      </label>
+      <label>
+        Mot de passe
+        <input id="loginPassword" type="password" autocomplete="current-password" required />
+      </label>
+
+      <button class="btn primary" type="submit">Se connecter</button>
+      <p class="auth-status" id="loginStatus" role="status"></p>
+    </form>
+
+    <form class="auth-panel" id="twoFactorForm" hidden>
+      <div class="brand">
+        <div class="brand-mark">RC</div>
+        <div>
+          <strong>Vérification</strong>
+          <span>Code reçu par e-mail</span>
+        </div>
+      </div>
+      <label>
+        Code à 6 chiffres
+        <input id="twoFactorCode" type="text" inputmode="numeric" maxlength="6" required />
+      </label>
+      <button class="btn primary" type="submit">Valider</button>
+      <p class="auth-status" id="twoFactorStatus" role="status"></p>
+    </form>
+  </section>
+
+  <div class="app-shell" id="appShell" hidden>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">RC</div>
+        <div>
+          <strong>Radio CR</strong>
+          <span id="userLabel"></span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="Navigation principale">
+        <button class="nav-item active" data-view="workspace">Dossier</button>
+        <button class="nav-item" data-view="history">Historique</button>
+        <button class="nav-item" data-view="settings">Paramètres</button>
+      </nav>
+
+      <div class="sync-card">
+        <div class="status-dot" id="networkDot"></div>
+        <div>
+          <strong id="networkLabel">Vérification…</strong>
+          <span id="syncLabel">Jamais synchronisé</span>
+        </div>
+      </div>
+      <button class="btn ghost sync-btn" id="syncBtn" type="button">Synchroniser</button>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Compte rendu</p>
+          <h1 id="pageTitle">Nouveau dossier</h1>
+        </div>
+        <div class="top-actions">
+          <button class="btn secondary" id="resetBtn" type="button">Nouveau dossier</button>
+          <button class="btn primary" id="saveBtn" type="button">Enregistrer</button>
+        </div>
+      </header>
+
+      <section class="view active" id="workspaceView">
+        <div class="workflow-grid">
+          <section class="panel">
+            <div class="panel-title">
+              <span>1</span>
+              <div>
+                <h2>Contexte clinique</h2>
+                <p>Choisissez l'hôpital, l'examen et la date.</p>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label>
+                Hôpital
+                <select id="hospitalSelect"></select>
+              </label>
+              <label>
+                Examen
+                <select id="examSelect"></select>
+              </label>
+              <label id="sideField" hidden>
+                Côté
+                <select id="sideSelect">
+                  <option value="">Non applicable</option>
+                  <option value="Droit">Droit</option>
+                  <option value="Gauche">Gauche</option>
+                  <option value="Bilatéral">Bilatéral</option>
+                </select>
+              </label>
+              <label>
+                Date de l'examen
+                <input id="dateInput" type="date" />
+              </label>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <span>2</span>
+              <div>
+                <h2>Identité patient</h2>
+                <p>R2 : ne jamais inventer une donnée absente.</p>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label>Nom &amp; prénom <input id="patientNameInput" autocomplete="off" /></label>
+              <label>Âge <input id="patientAgeInput" autocomplete="off" /></label>
+              <label>Sexe
+                <select id="patientSexInput">
+                  <option value=""></option>
+                  <option value="F">F</option>
+                  <option value="M">M</option>
+                </select>
+              </label>
+              <label>N° dossier <input id="fileNumberInput" autocomplete="off" /></label>
+              <label>Médecin prescripteur <input id="prescriberInput" autocomplete="off" /></label>
+            </div>
+          </section>
+        </div>
+
+        <div class="editor-layout">
+          <section class="panel editor-panel">
+            <div class="panel-title compact">
+              <span>3</span>
+              <div>
+                <h2>Compte rendu</h2>
+                <p>Dictez ou modifiez manuellement.</p>
+              </div>
+            </div>
+
+            <div class="voice-box">
+              <div class="section-head">
+                <strong>Dictée</strong>
+                <span id="voiceStatus">Micro non vérifié.</span>
+              </div>
+              <textarea id="voiceText" rows="3" placeholder="La dictée apparaît ici, ou tapez directement une constatation (ex. foie augmenté de volume, contours bosselés)."></textarea>
+              <div class="voice-actions">
+                <button class="icon-btn" id="voiceBtn" type="button">Dicter (micro)</button>
+                <button class="icon-btn" id="stopVoiceBtn" type="button" hidden>Arrêter</button>
+                <label class="icon-btn attach-btn">
+                  <input id="audioFileInput" type="file" accept="audio/*" hidden />
+                  Importer un vocal
+                </label>
+                <button class="icon-btn" id="transcribeBtn" type="button" title="Nécessite une connexion (Groq)">Transcrire</button>
+                <button class="icon-btn primary-accent" id="applyVoiceBtn" type="button">Intégrer au compte rendu</button>
+              </div>
+              <p class="microcopy">L'intégration sémantique fonctionne hors ligne. Le raffinage IA (ci-dessous) nécessite une connexion.</p>
+            </div>
+
+            <div class="form-block">
+              <label>Technique <textarea id="techniqueInput" rows="2"></textarea></label>
+            </div>
+
+            <div class="form-block">
+              <div class="section-head">
+                <strong>Résultats</strong>
+                <button class="btn ghost small" id="addResultBtn" type="button">+ Ligne</button>
+              </div>
+              <div id="resultsList" class="results-list"></div>
+            </div>
+
+            <div class="form-block">
+              <label>Conclusion <textarea id="conclusionInput" rows="2"></textarea></label>
+            </div>
+
+            <div class="ai-box">
+              <div class="section-head">
+                <strong>Assistant IA</strong>
+                <span id="aiStatus">Nécessite une connexion.</span>
+              </div>
+              <div class="ai-actions">
+                <button class="btn secondary" id="aiRefineBtn" type="button">Raffiner la dictée avec l'IA</button>
+              </div>
+              <textarea id="aiPromptText" rows="2" placeholder="Ou décrivez librement l'examen à générer entièrement par IA (ex. radiographie du thorax normale)."></textarea>
+              <div class="ai-actions">
+                <button class="btn secondary" id="aiDraftBtn" type="button">Générer le compte rendu par IA</button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="panel intelligence-panel">
+            <h2>Statut</h2>
+            <div class="check-list" id="statusChecks"></div>
+            <div class="hint-box">
+              <strong>Rappel</strong>
+              <p>Cet outil prépare le compte rendu. La finalisation, la signature et la génération du document officiel se font depuis l'interface d'administration.</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="historyView">
+        <section class="panel">
+          <div class="panel-title">
+            <span>H</span>
+            <div>
+              <h2>Historique local</h2>
+              <p>Comptes rendus enregistrés sur cet appareil, classés par journée.</p>
+            </div>
+          </div>
+          <div class="history-list" id="historyList"></div>
+        </section>
+      </section>
+
+      <section class="view" id="settingsView">
+        <section class="panel">
+          <div class="panel-title">
+            <span>S</span>
+            <div>
+              <h2>Paramètres</h2>
+              <p>Connexion, synchronisation et session.</p>
+            </div>
+          </div>
+          <div class="settings-grid">
+            <div>
+              <strong>Connecté en tant que</strong>
+              <span id="settingsUser"></span>
+            </div>
+            <div>
+              <strong>Dernière synchronisation</strong>
+              <span id="settingsLastSync"></span>
+            </div>
+            <div>
+              <strong>Stockage</strong>
+              <span>IndexedDB local — fonctionne hors ligne</span>
+            </div>
+            <div>
+              <button class="btn danger" id="logoutBtn" type="button">Se déconnecter</button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/app/js/app.js"></script>
+</body>
+</html>
