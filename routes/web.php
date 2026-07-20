@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Admin\ApiCredentialController;
+use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\ExamTemplateController;
 use App\Http\Controllers\Admin\HospitalController;
 use App\Http\Controllers\Admin\HospitalImportController;
@@ -29,9 +31,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
     Route::middleware('auth')->group(function () {
         Route::post('/deconnexion', [LoginController::class, 'destroy'])->name('logout');
-        Route::get('/', fn () => view('admin.dashboard'))->name('dashboard');
+        Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
         Route::middleware('role:admin')->group(function () {
+            Route::get('/audit', [AuditLogController::class, 'index'])->name('audit.index');
+
             Route::prefix('hopitaux/importer')->name('hospitals.import.')->group(function () {
                 Route::get('/', [HospitalImportController::class, 'create'])->name('create');
                 Route::post('/analyser', [HospitalImportController::class, 'analyze'])->name('analyze');

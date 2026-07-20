@@ -30,7 +30,7 @@ moteur d'insertion sémantique).
       corrigible, aucun cas particulier codé en dur)
 - [x] Étape 9 — Refonte professionnelle de la PWA (cœur métier : auth réelle,
       catalogue hors ligne, dictée + moteur sémantique, IA, synchronisation)
-- [ ] Étape 10 — Sauvegardes, administration, audit
+- [x] Étape 10 — Sauvegardes planifiées, tableau de bord, journal d'audit
 - [ ] Étape 11 — Durcissement final, README complet, revue de sécurité
 
 ## Démarrage rapide (développement local)
@@ -309,3 +309,26 @@ par tout utilisateur authentifié sans distinguer les rôles (contrairement à
 `/admin/comptes-rendus` où la secrétaire ne peut pas rédiger le contenu
 médical, F1) : à traiter si la PWA est mise entre les mains d'un profil
 secrétaire.
+
+## Sauvegardes (F7)
+
+`App\Services\BackupService` (`php artisan app:backup`, planifié
+quotidiennement à 02h00 via `routes/console.php`) archive en zip : le dump de
+la base (fichier SQLite copié tel quel, ou `mysqldump --single-transaction`
+en production — les champs nominatifs y restent chiffrés, R3), les templates
+institutionnels (`storage/app/templates/`) et les documents déjà générés
+(`storage/app/private/reports/`). Rotation automatique sur `BACKUP_KEEP`
+archives (14 par défaut). Destination configurable via `BACKUP_DISK`
+(`local` par défaut, `backup` pour un stockage S3-compatible distant via les
+variables `BACKUP_S3_*`). La clé applicative (`APP_KEY`) n'est jamais incluse
+dans l'archive. Voir `tests/Feature/BackupServiceTest.php`.
+
+## Administration et audit (F8)
+
+- **Tableau de bord** (`/admin`) — statistiques (comptes rendus par statut,
+  activité du jour, hôpitaux/utilisateurs actifs) ; pour un administrateur :
+  date de la dernière sauvegarde et 10 dernières entrées du journal d'audit.
+- **Journal d'audit** (`/admin/audit`, rôle `admin`) — consultation en lecture
+  seule de `audit_logs` (connexions, créations/modifications d'hôpitaux,
+  d'examens, de comptes rendus, clés API, imports…), filtrable par action,
+  utilisateur et plage de dates, paginé.
