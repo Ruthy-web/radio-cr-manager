@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\ApiCredentialController;
 use App\Http\Controllers\Admin\ExamTemplateController;
 use App\Http\Controllers\Admin\HospitalController;
 use App\Http\Controllers\Admin\ReportController;
@@ -35,6 +36,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
                 ->parameters(['hopitaux' => 'hospital', 'examens' => 'exam_template'])
                 ->names('hospitals.exam-templates')
                 ->except(['show']);
+
+            Route::prefix('parametres')->name('settings.')->group(function () {
+                Route::get('/cles-api', [ApiCredentialController::class, 'edit'])->name('api-credentials.edit');
+                Route::put('/cles-api', [ApiCredentialController::class, 'update'])->name('api-credentials.update');
+            });
         });
 
         Route::prefix('comptes-rendus')->name('reports.')->group(function () {

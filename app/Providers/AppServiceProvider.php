@@ -37,5 +37,11 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(10)->by($email.'|'.$request->ip());
         });
+
+        // Les appels IA (F4) ont un coût réel côté fournisseur : limitation
+        // par utilisateur authentifié, en complément du contrôle d'accès.
+        RateLimiter::for('ai', function ($request) {
+            return Limit::perMinute(20)->by($request->user()?->id ?? $request->ip());
+        });
     }
 }

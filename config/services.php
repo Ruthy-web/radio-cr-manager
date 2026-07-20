@@ -35,4 +35,16 @@ return [
         ],
     ],
 
+    // Proxys IA (F4) — repli si aucune clé n'est configurée en base (table
+    // api_credentials, écran admin « Clés API »).
+    'groq' => [
+        'key' => env('GROQ_API_KEY'),
+        'stt_model' => env('GROQ_STT_MODEL', 'whisper-large-v3-turbo'),
+    ],
+
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-sonnet-4-6'),
+    ],
+
 ];

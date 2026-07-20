@@ -22,7 +22,8 @@ moteur d'insertion sémantique).
       frontend-existant/app.js : synonymes, latéralité, valeurs numériques)
 - [x] Étape 5 — Génération DOCX/PDF depuis les templates réels (modification
       XML directe des 5 templates institutionnels, jamais de reconstruction)
-- [ ] Étape 6 — Proxys IA (transcription + rédaction)
+- [x] Étape 6 — Proxys IA (transcription Groq, raffinage et rédaction
+      Anthropic, clés chiffrées en base, journalisation d'usage sans PHI)
 - [ ] Étape 7 — API de synchronisation PWA
 - [ ] Étape 8 — Assistant « Ajouter un hôpital »
 - [ ] Étape 9 — Refonte professionnelle de la PWA
@@ -179,3 +180,42 @@ Voir `tests/Feature/DocxReportGenerationTest.php` (entête/logo préservés à
 l'identique, police Arial Narrow conservée, anomalie en rouge, titre jamais
 souligné, seul l'examen demandé subsiste) et
 `tests/Feature/GenerateReportDocumentJobTest.php`.
+
+## Proxys IA (F4)
+
+La PWA existante (`frontend-existant/app.js`) appelle aujourd'hui Groq et
+Anthropic directement depuis le navigateur, avec des clés stockées dans le
+`localStorage` du poste — contraire à R4. Le backend introduit trois proxys
+qui portent fidèlement la même logique métier côté serveur, clé jamais
+exposée au client :
+
+- `POST /api/v1/stt` — transcription vocale via Groq (Whisper). Le fichier
+  audio n'est jamais écrit sur disque côté serveur : transmis en flux au
+  fournisseur depuis l'upload temporaire de la requête, puis abandonné (R3).
+- `POST /api/v1/ai/refine` — intègre une dictée dans les résultats existants
+  (remplace la ligne de la structure anatomique concernée ou l'ajoute, met à
+  jour la conclusion si nécessaire) ; portage fidèle du prompt système de
+  `insertDictationWithClaude()`.
+- `POST /api/v1/ai/draft` — génère un compte rendu complet (heading,
+  technique, résultats, conclusion) à partir d'une demande libre, du style de
+  l'hôpital (exemples issus du catalogue) et d'un contexte patient explicite
+  (R2 : zéro invention au-delà de ce qui est fourni) ; portage fidèle du
+  prompt système et de la boucle de nouvelle tentative sur troncature
+  (`stop_reason: max_tokens`) de `generateAiDraft()`.
+
+Toutes les routes sont protégées par `auth:sanctum` + `token.active` et
+limitées à 20 requêtes/minute/utilisateur (`throttle:ai`) — les appels IA ont
+un coût réel côté fournisseur.
+
+**Clés API** — écran admin `/admin/parametres/cles-api` (rôle `admin`) : les
+clés Groq/Anthropic sont saisies puis chiffrées en base
+(`api_credentials.api_key`, cast `encrypted`) et ne sont plus jamais
+réaffichées en clair. `App\Services\Ai\ApiCredentialResolver` se replie sur
+`GROQ_API_KEY`/`ANTHROPIC_API_KEY` (`.env`) tant qu'aucune clé n'est encore
+enregistrée en base.
+
+**Journalisation d'usage** — chaque appel crée une entrée dans
+`ai_usage_logs` (utilisateur, endpoint, fournisseur, modèle, succès, code
+HTTP, durée). Ni le texte dicté ni le texte généré n'y sont jamais stockés
+(R3) : `tests/Feature/Api/Ai/*` vérifient explicitement l'absence du contenu
+médical dans la table de journalisation.
