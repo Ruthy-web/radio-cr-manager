@@ -14,7 +14,8 @@ moteur d'insertion sémantique).
 - [x] Étape 1 — Squelette Laravel, authentification (Sanctum + sessions),
       rôles (`admin`, `radiologue`, `secretaire`), 2FA par e-mail,
       verrouillage de compte, en-têtes de sécurité, HTTPS forcé.
-- [ ] Étape 2 — Référentiel hôpitaux & catalogue d'examens
+- [x] Étape 2 — Référentiel hôpitaux & catalogue d'examens (185 examens réels
+      extraits automatiquement des 5 DOCX institutionnels, CRUD admin complet)
 - [ ] Étape 3 — CRUD comptes rendus + versions + historique
 - [ ] Étape 4 — Moteur d'insertion sémantique
 - [ ] Étape 5 — Génération DOCX/PDF depuis les templates réels
@@ -56,6 +57,24 @@ production** :
 composer test        # ou : php artisan test / ./vendor/bin/pest
 ./vendor/bin/pint --test   # vérification du style PSR-12
 ```
+
+## Référentiel hôpitaux (F2)
+
+Le catalogue des 5 hôpitaux (185 examens) est généré dans
+`database/seeders/data/templates.json` par analyse automatique des DOCX
+institutionnels stockés dans `storage/app/templates/` :
+
+```bash
+php artisan app:generate-hospital-catalog   # régénère templates.json
+php artisan db:seed --class=HospitalCatalogSeeder
+```
+
+Le moteur d'extraction (`App\Services\HospitalDocxParser`) détecte un examen
+par bloc (saut de page + titre), ses sections TECHNIQUE/RÉSULTATS/CONCLUSION,
+la latéralité et la couleur dominante des titres — il sera réutilisé et
+enrichi d'une interface de prévisualisation à l'étape 8 (assistant
+« Ajouter un hôpital »). Gestion des hôpitaux et de leur catalogue d'examens :
+`/admin/hopitaux` (réservé au rôle `admin`).
 
 ## Stack
 

@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\ExamTemplateController;
+use App\Http\Controllers\Admin\HospitalController;
 use App\Http\Controllers\Auth\LoginController;
 use Illuminate\Support\Facades\Route;
 
@@ -18,5 +20,20 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::middleware('auth')->group(function () {
         Route::post('/deconnexion', [LoginController::class, 'destroy'])->name('logout');
         Route::get('/', fn () => view('admin.dashboard'))->name('dashboard');
+
+        Route::middleware('role:admin')->group(function () {
+            Route::post('/hopitaux/{hospital}/reactiver', [HospitalController::class, 'restore'])->name('hospitals.restore');
+            Route::resource('hopitaux', HospitalController::class)
+                ->parameters(['hopitaux' => 'hospital'])
+                ->names('hospitals')
+                ->except(['show']);
+
+            Route::post('/hopitaux/{hospital}/examens/{exam_template}/reactiver', [ExamTemplateController::class, 'restore'])
+                ->name('hospitals.exam-templates.restore');
+            Route::resource('hopitaux.examens', ExamTemplateController::class)
+                ->parameters(['hopitaux' => 'hospital', 'examens' => 'exam_template'])
+                ->names('hospitals.exam-templates')
+                ->except(['show']);
+        });
     });
 });
