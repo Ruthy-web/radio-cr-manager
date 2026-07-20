@@ -24,7 +24,8 @@ moteur d'insertion sémantique).
       XML directe des 5 templates institutionnels, jamais de reconstruction)
 - [x] Étape 6 — Proxys IA (transcription Groq, raffinage et rédaction
       Anthropic, clés chiffrées en base, journalisation d'usage sans PHI)
-- [ ] Étape 7 — API de synchronisation PWA
+- [x] Étape 7 — API de synchronisation PWA (`/api/v1/reports/sync`, idempotente
+      par `client_uuid`, dernier écrivain gagnant, la PWA reste offline-first)
 - [ ] Étape 8 — Assistant « Ajouter un hôpital »
 - [ ] Étape 9 — Refonte professionnelle de la PWA
 - [ ] Étape 10 — Sauvegardes, administration, audit
@@ -219,3 +220,25 @@ enregistrée en base.
 HTTP, durée). Ni le texte dicté ni le texte généré n'y sont jamais stockés
 (R3) : `tests/Feature/Api/Ai/*` vérifient explicitement l'absence du contenu
 médical dans la table de journalisation.
+
+## Synchronisation PWA (F6)
+
+La PWA reste offline-first : elle continue de fonctionner et de stocker
+localement même sans réseau (R5). Le backend n'est qu'une couche de
+rattrapage au retour du réseau, jamais un point de passage obligé.
+
+- `POST /api/v1/reports/sync` — envoi des comptes rendus créés/modifiés hors
+  ligne. Idempotent par `client_uuid` (généré côté appareil, jamais
+  régénéré, colonne unique) : rejouer le même envoi après une coupure réseau
+  ne crée jamais de doublon. Résolution de conflit par dernier écrivain
+  gagnant, comparée sur l'horodatage `updated_at` fourni par le client — un
+  envoi plus ancien que l'état serveur est ignoré (`outcome: unchanged`), pas
+  écrasé. Un compte rendu archivé côté serveur n'est jamais réanimé
+  silencieusement par un renvoi tardif (`outcome: conflict`).
+- `GET /api/v1/reports/sync?since=<ISO 8601>` — récupère les comptes rendus
+  créés/modifiés/archivés depuis `since` (pagination par curseur implicite
+  via `has_more` + `updated_at` du dernier élément), y compris les comptes
+  rendus archivés entre-temps (`deleted: true`) pour que la PWA purge son
+  stockage local.
+
+Voir `tests/Feature/Api/ReportSyncTest.php`.
