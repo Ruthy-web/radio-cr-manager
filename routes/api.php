@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Ai\BulletinController;
+use App\Http\Controllers\Api\V1\Ai\ChatController;
 use App\Http\Controllers\Api\V1\Ai\DraftController;
 use App\Http\Controllers\Api\V1\Ai\RefineController;
 use App\Http\Controllers\Api\V1\Ai\SttController;
@@ -32,6 +34,8 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::prefix('ai')->name('ai.')->group(function () {
                 Route::post('/refine', [RefineController::class, 'refine'])->name('refine');
                 Route::post('/draft', [DraftController::class, 'draft'])->name('draft');
+                Route::post('/bulletin', [BulletinController::class, 'read'])->name('bulletin');
+                Route::post('/chat', [ChatController::class, 'send'])->name('chat');
             });
         });
     });
